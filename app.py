@@ -23,10 +23,18 @@ import hashlib
 import time
 from datetime import datetime, timedelta
 import tempfile
-from mutagen.flac import FLAC
-from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TRCK, APIC
-from mutagen import File
+
+# Importaciones opcionales para metadatos de música
+try:
+    from mutagen.flac import FLAC
+    from mutagen.mp3 import MP3
+    from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TRCK, APIC
+    from mutagen import File
+    MUTAGEN_AVAILABLE = True
+except ImportError:
+    MUTAGEN_AVAILABLE = False
+    print("Mutagen no disponible - funcionalidad de metadatos deshabilitada")
+
 from bs4 import BeautifulSoup
 import threading
 import logging
@@ -163,6 +171,10 @@ def get_token_info(token=None):
 
 def add_metadata_to_file(file_path, track_info, cover_url=None):
     """Agregar metadatos a un archivo de audio"""
+    if not MUTAGEN_AVAILABLE:
+        print("Mutagen no disponible - saltando metadatos")
+        return True
+    
     try:
         # Detectar el tipo de archivo
         audio_file = File(file_path)
@@ -225,14 +237,17 @@ def add_metadata_to_file(file_path, track_info, cover_url=None):
                 audio_file['TRACKNUMBER'] = str(track_number)
             
             # Agregar cover art para FLAC
-            if cover_data:
-                from mutagen.flac import Picture
-                picture = Picture()
-                picture.type = 3  # Cover (front)
-                picture.mime = 'image/jpeg'
-                picture.desc = 'Cover'
-                picture.data = cover_data
-                audio_file.add_picture(picture)
+            if cover_data and MUTAGEN_AVAILABLE:
+                try:
+                    from mutagen.flac import Picture
+                    picture = Picture()
+                    picture.type = 3  # Cover (front)
+                    picture.mime = 'image/jpeg'
+                    picture.desc = 'Cover'
+                    picture.data = cover_data
+                    audio_file.add_picture(picture)
+                except ImportError:
+                    print("No se pudo importar Picture de mutagen")
         
         # Guardar cambios
         audio_file.save()
@@ -1347,8 +1362,11 @@ def get_preview():
 if __name__ == '__main__':
     print("🎵 Iniciando Music Downloader...")
     
-    # Configuración para Azure App Service
+    # Configuración para desarrollo local y Azure App Service
+    # Para Azure Functions, este bloque no se ejecutará
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_ENV') == 'development'
     
-    app.run(debug=debug_mode, host='0.0.0.0', port=port)
+    # Solo ejecutar si no estamos en Azure Functions
+    if not os.environ.get('FUNCTIONS_WORKER_RUNTIME'):
+        app.run(debug=debug_mode, host='0.0.0.0', port=port)
