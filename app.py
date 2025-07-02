@@ -31,13 +31,6 @@ from bs4 import BeautifulSoup
 import threading
 import logging
 import shutil
-from mutagen.flac import FLAC
-from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TRCK, APIC
-from mutagen import File
-import base64
-from bs4 import BeautifulSoup
-import unicodedata
 import string
 
 app = Flask(__name__)
@@ -1354,4 +1347,8 @@ def get_preview():
 if __name__ == '__main__':
     print("🎵 Iniciando Music Downloader...")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Configuración para Azure App Service
+    port = int(os.environ.get('PORT', 5000))
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
