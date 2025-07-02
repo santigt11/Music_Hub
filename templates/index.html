@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Music Hub - Descargador Inteligente</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <h1>🎵 Music Hub</h1>
+                <p>Descarga música de alta calidad con búsqueda inteligente</p>
+            </div>
+        </header>
+
+        <!-- Search Section -->
+        <section class="search-section">
+            <div class="search-tabs">
+                <button class="tab-btn active" data-source="qobuz">
+                    <span class="tab-icon">🎧</span>
+                    Musica
+                </button>
+                <button class="tab-btn" data-source="spotify">
+                    <span class="tab-icon">🎵</span>
+                    Spotify
+                </button>
+            </div>
+
+            <div class="search-container">
+                <div class="search-box">
+                    <input 
+                        type="text" 
+                        id="searchInput" 
+                        placeholder="Buscar canciones, artistas, álbumes o letra..."
+                        autocomplete="off"
+                    >
+                    <button id="clearBtn" class="clear-btn hidden" title="Limpiar búsqueda">
+                        <span class="clear-icon">✕</span>
+                    </button>
+                    <button id="searchBtn" class="search-btn">
+                        <span class="search-icon">🔍</span>
+                    </button>
+                </div>
+                
+                <div class="search-hint" id="searchHint">
+                    <span class="hint-qobuz">💡 Busca por título, artista, álbum o frase de letra (ignora tildes, puntuación y mayúsculas)</span>
+                    <span class="hint-spotify hidden">💡 Pega un enlace de Spotify o busca por nombre</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Quality Selector -->
+        <section class="quality-section">
+            <div class="quality-selector">
+                <label for="qualitySelect">Calidad de descarga:</label>
+                <select id="qualitySelect">
+                    <option value="5">MP3 320 kbps</option>
+                    <option value="6" selected>FLAC 16-bit/44.1kHz</option>
+                    <option value="7">FLAC 24-bit/96kHz</option>
+                    <option value="27">FLAC 24-bit/192kHz</option>
+                </select>
+            </div>
+        </section>
+
+        <!-- Loading -->
+        <div class="loading hidden" id="loading">
+            <div class="loading-spinner"></div>
+            <p>Buscando música...</p>
+        </div>
+
+        <!-- Results Section -->
+        <section class="results-section">
+            <div class="results-header hidden" id="resultsHeader">
+                <h2>Resultados de búsqueda</h2>
+                <span class="results-count" id="resultsCount"></span>
+            </div>
+            
+            <div class="results-container" id="resultsContainer">
+                <!-- Los resultados se insertarán aquí dinámicamente -->
+            </div>
+        </section>
+
+        <!-- Error Message -->
+        <div class="error-message hidden" id="errorMessage">
+            <span class="error-icon">⚠️</span>
+            <span class="error-text"></span>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>© 2025 Music Downloader - Disfruta la música de alta calidad</p>
+            <div class="token-status" id="tokenStatus">
+                <span class="token-icon">🔑</span>
+                <span class="token-text">Verificando token...</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Download Modal -->
+    <div class="modal hidden" id="downloadModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Descargando...</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="download-info">
+                    <div class="download-cover">
+                        <img id="downloadCover" src="" alt="Cover">
+                    </div>
+                    <div class="download-details">
+                        <h4 id="downloadTitle"></h4>
+                        <p id="downloadArtist"></p>
+                        <p id="downloadQuality"></p>
+                    </div>
+                </div>
+                <div class="download-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <p class="progress-text" id="progressText">Preparando descarga...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='animations.js') }}"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
