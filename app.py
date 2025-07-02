@@ -1078,7 +1078,8 @@ def download():
                 'track_info': {
                     'title': track_info.get('title'),
                     'artist': track_info.get('performer', {}).get('name'),
-                    'album': track_info.get('album', {}).get('title')
+                    'album': track_info.get('album', {}).get('title'
+                    )
                 }
             })
         else:
@@ -1195,6 +1196,160 @@ def proxy_download():
     except Exception as e:
         print(f"Error en proxy_download: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/preview', methods=['POST'])
+def get_preview():
+    """API para obtener URL de preview de 30 segundos"""
+    try:
+        data = request.get_json()
+        track_id = data.get('track_id')
+        
+        if not track_id:
+            return jsonify({'error': 'Track ID requerido'}), 400
+        
+        print(f"🎵 Solicitando preview para track ID: {track_id}")
+        
+        # Obtener información del track
+        track_info = downloader.get_track_info(track_id)
+        if not track_info:
+            return jsonify({'error': 'Track no encontrado'}), 404
+        
+        print(f"📊 Track info obtenida: {track_info.get('title')} - {track_info.get('performer', {}).get('name')}")
+        
+        # Buscar URL de preview en la información del track
+        preview_url = None
+        
+        # 1. Buscar preview directo en el track info
+        preview_fields = ['preview_url', 'preview', 'sample_url', 'stream_url']
+        for field in preview_fields:
+            if field in track_info and track_info[field]:
+                preview_url = track_info[field]
+                print(f"✅ Preview encontrado en campo '{field}': {preview_url[:50]}...")
+                break
+        
+        # 2. Si no hay preview directo, intentar múltiples métodos
+        if not preview_url:
+            print("🔍 No hay preview directo, intentando métodos alternativos...")
+            
+            # Método 1: Intentar obtener sample con la API oficial
+            try:
+                print("🔍 Método 1: Sample API con signature...")
+                unix_timestamp = int(time.time())
+                timestamp_str = str(unix_timestamp)
+                
+                # Crear hash para sample (método usado por Qobuz)
+                hash_string = f"trackgetFileUrlformat_id5intentstreamtrack_id{track_id}{timestamp_str}{downloader.app_secret}"
+                request_signature = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
+                
+                params = {
+                    'request_ts': timestamp_str,
+                    'request_sig': request_signature,
+                    'track_id': track_id,
+                    'format_id': '5',  # MP3 para preview
+                    'intent': 'stream',
+                    'sample': 'true',  # Obtener sample de 30 segundos
+                    'app_id': downloader.app_id,
+                    'user_auth_token': downloader.token
+                }
+                
+                response = downloader.session.get(
+                    f"{downloader.base_url}/track/getFileUrl",
+                    params=params,
+                    timeout=10
+                )
+                
+                print(f"📊 Respuesta API sample: {response.status_code}")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    preview_url = data.get('url')
+                    if preview_url:
+                        print(f"✅ Sample URL obtenida por método 1: {preview_url[:50]}...")
+                    else:
+                        print(f"⚠️ Respuesta exitosa pero sin URL: {data}")
+                else:
+                    print(f"❌ Error en sample API: {response.status_code}")
+                    try:
+                        error_data = response.json()
+                        print(f"❌ Detalles: {error_data}")
+                    except:
+                        print(f"❌ Error sin detalles: {response.text[:200]}")
+                
+            except Exception as e:
+                print(f"❌ Error en método 1: {e}")
+            
+            # Método 2: Intentar con parámetros simplificados
+            if not preview_url:
+                try:
+                    print("🔍 Método 2: Parámetros simplificados...")
+                    params = {
+                        'track_id': track_id,
+                        'format_id': '5',
+                        'app_id': downloader.app_id,
+                        'user_auth_token': downloader.token,
+                        'sample': 'true'
+                    }
+                    
+                    response = downloader.session.get(
+                        f"{downloader.base_url}/track/getFileUrl",
+                        params=params,
+                        timeout=10
+                    )
+                    
+                    print(f"📊 Respuesta método 2: {response.status_code}")
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        preview_url = data.get('url')
+                        if preview_url:
+                            print(f"✅ Sample URL obtenida por método 2: {preview_url[:50]}...")
+                
+                except Exception as e:
+                    print(f"❌ Error en método 2: {e}")
+            
+            # Método 3: Usar el URL de streaming normal pero limitado a 30 segundos en el frontend
+            if not preview_url:
+                try:
+                    print("🔍 Método 3: URL de streaming normal...")
+                    stream_url = downloader.get_track_url(track_id, '5')  # MP3 de menor calidad
+                    if stream_url:
+                        print(f"✅ Using stream URL as preview: {stream_url[:50]}...")
+                        preview_url = stream_url
+                        
+                except Exception as e:
+                    print(f"❌ Error en método 3: {e}")
+        
+        # Preparar respuesta
+        if preview_url:
+            track_response = {
+                'success': True,
+                'preview_url': preview_url,
+                'track_info': {
+                    'title': track_info.get('title', 'Unknown'),
+                    'artist': track_info.get('performer', {}).get('name', 'Unknown'),
+                    'album': track_info.get('album', {}).get('title', 'Unknown'),
+                    'cover': track_info.get('album', {}).get('image', {}).get('small', '')
+                }
+            }
+            print(f"✅ Preview exitoso para: {track_response['track_info']['title']}")
+            return jsonify(track_response)
+        else:
+            print(f"❌ No se pudo obtener preview para track {track_id}")
+            return jsonify({
+                'success': False,
+                'error': 'Preview no disponible para este track. Esto puede deberse a restricciones del proveedor.',
+                'track_info': {
+                    'title': track_info.get('title', 'Unknown'),
+                    'artist': track_info.get('performer', {}).get('name', 'Unknown'),
+                    'album': track_info.get('album', {}).get('title', 'Unknown')
+                }
+            }), 404
+            
+    except Exception as e:
+        print(f"❌ Error general en preview: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     print("🎵 Iniciando Music Downloader...")

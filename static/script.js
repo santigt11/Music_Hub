@@ -3,6 +3,11 @@ let currentTab = 'qobuz';
 let searchResults = [];
 let isSearching = false;
 
+// Variables para preview
+let currentAudio = null;
+let currentPlayingIndex = -1;
+let previewTimeout = null;
+
 // Inicialización cuando carga la página
 document.addEventListener('DOMContentLoaded', function() {
     initializeTabs();
@@ -256,10 +261,16 @@ function displayResults(results) {
                     ${result.album ? `<div class="result-album">${escapeHtml(result.album)}</div>` : ''}
                     ${result.duration ? `<div class="result-duration">${formatDuration(result.duration)}</div>` : ''}
                 </div>
-                <button class="download-btn" onclick="openDownloadModal(${index})">
-                    <span class="download-icon">⬇</span>
-                    Descargar
-                </button>
+                <div class="result-actions">
+                    <button class="preview-btn" onclick="togglePreview(${index}, '${escapeHtml(result.id)}')">
+                        <span class="preview-icon">▶</span>
+                        <span class="preview-text">Preview</span>
+                    </button>
+                    <button class="download-btn" onclick="openDownloadModal(${index})">
+                        <span class="download-icon">⬇</span>
+                        Descargar
+                    </button>
+                </div>
             </div>
         `;
     }).join('');
@@ -469,7 +480,11 @@ async function checkTokenStatus() {
                 tokenStatus.title = info.error_api || info.error || 'Error al validar token';
             }
         } else {
-            throw new Error(data.error || 'Error al verificar token');
+            // Respuesta sin éxito
+            tokenStatus.className = 'token-status expired';
+            tokenIcon.textContent = '❌';
+            tokenText.textContent = 'Token inválido';
+            tokenStatus.title = 'Token no válido';
         }
     } catch (error) {
         console.error('Error verificando token:', error);
@@ -565,6 +580,239 @@ async function showTokenDetails() {
     } catch (error) {
         console.error('Error obteniendo información del token:', error);
         alert('Error al obtener información del token');
+    }
+}
+
+// ====================
+// FUNCIONES DE PREVIEW
+// ====================
+
+// Toggle preview de 30 segundos
+async function togglePreview(resultIndex, trackId) {
+    const result = searchResults[resultIndex];
+    if (!result) return;
+    
+    const previewBtn = document.querySelector(`[onclick*="togglePreview(${resultIndex}"]`);
+    if (!previewBtn) return;
+    
+    // Si ya está reproduciendo esta canción, pausar
+    if (currentPlayingIndex === resultIndex && currentAudio && !currentAudio.paused) {
+        pausePreview();
+        return;
+    }
+    
+    // Pausar cualquier preview anterior
+    pausePreview();
+    
+    try {
+        // Mostrar loading en el botón
+        previewBtn.innerHTML = '<span class="preview-icon">⏳</span><span class="preview-text">Cargando...</span>';
+        previewBtn.disabled = true;
+        
+        // Obtener URL de preview del backend
+        const response = await fetch('/api/preview', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                track_id: trackId
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.preview_url) {
+            // Crear y configurar audio
+            currentAudio = new Audio(data.preview_url);
+            currentPlayingIndex = resultIndex;
+            
+            // Configurar eventos del audio
+            currentAudio.addEventListener('loadstart', () => {
+                previewBtn.innerHTML = '<span class="preview-icon">⏳</span><span class="preview-text">Cargando...</span>';
+            });
+            
+            currentAudio.addEventListener('canplay', () => {
+                previewBtn.innerHTML = '<span class="preview-icon">⏸</span><span class="preview-text">Pausar</span>';
+                previewBtn.disabled = false;
+                previewBtn.classList.add('playing');
+            });
+            
+            currentAudio.addEventListener('play', () => {
+                showMiniPlayer(result, currentAudio);
+                
+                // Auto-pausar después de 30 segundos
+                previewTimeout = setTimeout(() => {
+                    pausePreview();
+                    showNotification('Preview de 30 segundos completado', 'success');
+                }, 30000);
+            });
+            
+            currentAudio.addEventListener('pause', () => {
+                previewBtn.innerHTML = '<span class="preview-icon">▶</span><span class="preview-text">Preview</span>';
+                previewBtn.classList.remove('playing');
+                hideMiniPlayer();
+            });
+            
+            currentAudio.addEventListener('ended', () => {
+                pausePreview();
+            });
+            
+            currentAudio.addEventListener('error', (e) => {
+                console.error('Error al reproducir preview:', e);
+                previewBtn.innerHTML = '<span class="preview-icon">⚠</span><span class="preview-text">Error</span>';
+                previewBtn.disabled = false;
+                previewBtn.classList.remove('playing');
+                showError('Error al reproducir preview');
+                resetPreview();
+            });
+            
+            // Reproducir
+            await currentAudio.play();
+            
+        } else {
+            throw new Error(data.error || 'Preview no disponible');
+        }
+        
+    } catch (error) {
+        console.error('Error al obtener preview:', error);
+        
+        // Mostrar mensaje específico dependiendo del error
+        let errorMessage = 'Preview no disponible';
+        if (error.message.includes('403')) {
+            errorMessage = 'Sin permisos para preview';
+        } else if (error.message.includes('404')) {
+            errorMessage = 'Preview no encontrado';
+        } else if (error.message.includes('network')) {
+            errorMessage = 'Error de conexión';
+        } else if (error.message.includes('restricciones')) {
+            errorMessage = 'Restringido por proveedor';
+        }
+        
+        previewBtn.innerHTML = `<span class="preview-icon">❌</span><span class="preview-text">${errorMessage}</span>`;
+        previewBtn.disabled = true;
+        previewBtn.style.opacity = '0.6';
+        
+        // Mostrar notificación más informativa
+        showNotification(`Preview no disponible: ${error.message}`, 'warning');
+        resetPreview();
+        
+        // Reactivar el botón después de 3 segundos para permitir reintentos
+        setTimeout(() => {
+            previewBtn.innerHTML = '<span class="preview-icon">▶</span><span class="preview-text">Preview</span>';
+            previewBtn.disabled = false;
+            previewBtn.style.opacity = '1';
+        }, 3000);
+    }
+}
+
+// Pausar preview actual
+function pausePreview() {
+    if (currentAudio) {
+        currentAudio.pause();
+    }
+    
+    if (previewTimeout) {
+        clearTimeout(previewTimeout);
+        previewTimeout = null;
+    }
+    
+    // Actualizar botón
+    if (currentPlayingIndex >= 0) {
+        const previewBtn = document.querySelector(`[onclick*="togglePreview(${currentPlayingIndex}"]`);
+        if (previewBtn) {
+            previewBtn.innerHTML = '<span class="preview-icon">▶</span><span class="preview-text">Preview</span>';
+            previewBtn.classList.remove('playing');
+            previewBtn.disabled = false;
+        }
+    }
+    
+    hideMiniPlayer();
+}
+
+// Reset completo del preview
+function resetPreview() {
+    pausePreview();
+    
+    if (currentAudio) {
+        currentAudio.src = '';
+        currentAudio = null;
+    }
+    
+    currentPlayingIndex = -1;
+}
+
+// Mostrar mini-player
+function showMiniPlayer(result, audio) {
+    let miniPlayer = document.getElementById('miniPlayer');
+    
+    if (!miniPlayer) {
+        // Crear mini-player si no existe
+        miniPlayer = document.createElement('div');
+        miniPlayer.id = 'miniPlayer';
+        miniPlayer.className = 'mini-player';
+        document.body.appendChild(miniPlayer);
+    }
+    
+    miniPlayer.innerHTML = `
+        <div class="mini-player-content">
+            <div class="mini-player-info">
+                <img src="${result.cover || ''}" alt="Cover" class="mini-player-cover" onerror="this.style.display='none'">
+                <div class="mini-player-details">
+                    <div class="mini-player-title">${escapeHtml(result.title)}</div>
+                    <div class="mini-player-artist">${escapeHtml(result.artist)}</div>
+                </div>
+            </div>
+            <div class="mini-player-controls">
+                <button class="mini-player-btn" onclick="pausePreview()">
+                    <span>⏸</span>
+                </button>
+                <div class="mini-player-progress">
+                    <div class="mini-player-progress-bar">
+                        <div class="mini-player-progress-fill" id="miniProgressFill"></div>
+                    </div>
+                    <div class="mini-player-time">
+                        <span id="miniCurrentTime">0:00</span> / <span>0:30</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    miniPlayer.classList.add('show');
+    
+    // Actualizar progreso
+    const updateProgress = () => {
+        if (currentAudio && !currentAudio.paused) {
+            const progressFill = document.getElementById('miniProgressFill');
+            const currentTimeSpan = document.getElementById('miniCurrentTime');
+            
+            if (progressFill && currentTimeSpan) {
+                const progress = (currentAudio.currentTime / 30) * 100; // 30 segundos máximo
+                progressFill.style.width = `${Math.min(progress, 100)}%`;
+                
+                const minutes = Math.floor(currentAudio.currentTime / 60);
+                const seconds = Math.floor(currentAudio.currentTime % 60);
+                currentTimeSpan.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }
+            
+            requestAnimationFrame(updateProgress);
+        }
+    };
+    
+    updateProgress();
+}
+
+// Ocultar mini-player
+function hideMiniPlayer() {
+    const miniPlayer = document.getElementById('miniPlayer');
+    if (miniPlayer) {
+        miniPlayer.classList.remove('show');
+        setTimeout(() => {
+            if (miniPlayer.parentNode) {
+                miniPlayer.remove();
+            }
+        }, 300);
     }
 }
 

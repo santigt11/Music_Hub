@@ -1077,12 +1077,25 @@ button:disabled:hover {
         text-overflow: initial;
     }
     
-    .download-btn {
-        align-self: center;
+    .result-actions {
+        flex-direction: row;
         width: 100%;
-        max-width: 200px;
+        gap: 8px;
         justify-content: center;
-        padding: 12px 20px;
+    }
+    
+    .preview-btn {
+        flex: 1;
+        max-width: 100px;
+        padding: 10px 8px;
+        font-size: 0.8rem;
+    }
+    
+    .download-btn {
+        flex: 1;
+        max-width: 120px;
+        justify-content: center;
+        padding: 10px 12px;
     }
     
     /* Modal para móvil */
@@ -1402,5 +1415,292 @@ body {
     .search-btn:active {
         background: var(--primary-dark);
         transform: scale(0.98);
+    }
+}
+
+/* Theme Toggle Button */
+.theme-toggle {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    transition: var(--transition);
+    z-index: 1000;
+    box-shadow: var(--shadow);
+}
+
+.theme-toggle:hover {
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+    transform: scale(1.1);
+}
+
+/* Estilos para tema claro */
+[data-theme="light"] {
+    --primary-color: #8B7355;
+    --primary-dark: #6B5B47;
+    --primary-light: #A68B5B;
+    --secondary-color: #D4C4B0;
+    --background: #f8fafc;
+    --surface: #ffffff;
+    --surface-hover: #f1f5f9;
+    --text-primary: #1e293b;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --border-hover: #cbd5e1;
+    --error: #ef4444;
+    --warning: #f59e0b;
+    --success: #10b981;
+    --accent: #334155;
+    --shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    --shadow-hover: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Estilos para el botón de preview y actions */
+.result-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.preview-btn {
+    background: transparent;
+    color: var(--success);
+    border: 1px solid var(--success);
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: var(--transition);
+    font-weight: 400;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    position: relative;
+    overflow: hidden;
+    min-width: 85px;
+    justify-content: center;
+}
+
+.preview-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: var(--success);
+    transition: var(--transition-fast);
+    z-index: -1;
+}
+
+.preview-btn:hover::before {
+    left: 0;
+}
+
+.preview-btn:hover {
+    color: var(--text-primary);
+    transform: translateY(-1px) scale(1.02);
+    box-shadow: 0 3px 8px rgba(127, 176, 105, 0.3);
+}
+
+.preview-btn.playing {
+    background: var(--success);
+    color: var(--text-primary);
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.preview-btn:disabled {
+    background: transparent;
+    border-color: var(--text-muted);
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+    transform: none !important;
+    animation: none !important;
+}
+
+.preview-icon {
+    font-size: 0.9rem;
+}
+
+.preview-text {
+    font-size: 0.8rem;
+}
+
+/* Mini-player estilos */
+.mini-player {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: var(--border-radius);
+    padding: 16px;
+    box-shadow: var(--shadow-hover);
+    z-index: 10000;
+    min-width: 320px;
+    max-width: 400px;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: var(--transition-slow);
+    backdrop-filter: blur(10px);
+}
+
+.mini-player.show {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.mini-player-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.mini-player-info {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.mini-player-cover {
+    width: 50px;
+    height: 50px;
+    border-radius: 4px;
+    object-fit: cover;
+    background: var(--background);
+    border: 1px solid var(--border);
+}
+
+.mini-player-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.mini-player-title {
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 2px;
+}
+
+.mini-player-artist {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mini-player-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.mini-player-btn {
+    background: var(--primary-color);
+    border: none;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+    color: var(--text-primary);
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.mini-player-btn:hover {
+    background: var(--primary-dark);
+    transform: scale(1.1);
+}
+
+.mini-player-progress {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.mini-player-progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+}
+
+.mini-player-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--success), var(--primary-color));
+    border-radius: 2px;
+    transition: width 0.1s ease;
+    width: 0%;
+}
+
+.mini-player-time {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-align: center;
+    font-family: 'Courier New', monospace;
+}
+
+/* Mini-player responsive */
+@media (max-width: 768px) {
+    .mini-player {
+        bottom: 10px;
+        right: 10px;
+        left: 10px;
+        min-width: auto;
+        max-width: none;
+        padding: 12px;
+    }
+    
+    .mini-player-content {
+        gap: 10px;
+    }
+    
+    .mini-player-info {
+        gap: 10px;
+    }
+    
+    .mini-player-cover {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .mini-player-title {
+        font-size: 0.85rem;
+    }
+    
+    .mini-player-artist {
+        font-size: 0.75rem;
+    }
+    
+    .mini-player-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 0.9rem;
     }
 }
