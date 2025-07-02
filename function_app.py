@@ -21,10 +21,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             route = ''
         
         # Si la ruta está vacía, redirigir al index
-        if not route:
+        if not route or route == '':
             route = '/'
         elif not route.startswith('/'):
             route = '/' + route
+            
+        logging.info(f'Processing route: {route}')
         
         # Preparar headers para Flask
         headers = {}
@@ -67,4 +69,31 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             body=f"Error interno del servidor: {str(e)}",
             status_code=500,
             mimetype='text/plain'
+        )
+
+# Función específica para la ruta raíz
+@function_app.route(route="", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
+def root(req: func.HttpRequest) -> func.HttpResponse:
+    """Función para manejar la ruta raíz específicamente"""
+    logging.info('Root route accessed')
+    
+    try:
+        with app.test_request_context(path='/', method='GET'):
+            response = app.full_dispatch_request()
+            
+            response_headers = {}
+            for key, value in response.headers:
+                response_headers[key] = value
+            
+            return func.HttpResponse(
+                body=response.get_data(),
+                status_code=response.status_code,
+                headers=response_headers,
+                mimetype=response.content_type or 'text/html'
+            )
+    except Exception as e:
+        logging.error(f"Error in root route: {str(e)}")
+        return func.HttpResponse(
+            body=f"Error: {str(e)}",
+            status_code=500
         )
