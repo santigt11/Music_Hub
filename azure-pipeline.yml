@@ -4,10 +4,13 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
+variables:
+  pythonVersion: '3.10'
+
 steps:
   - task: UsePythonVersion@0
     inputs:
-      versionSpec: '3.x'
+      versionSpec: '$(pythonVersion)'
       addToPath: true
 
   - script: python -m pip install --upgrade pip
@@ -16,11 +19,6 @@ steps:
   - script: pip install -r requirements.txt
     displayName: 'Install dependencies'
 
-  # (Opcional) Ejecuta pruebas si tienes tests
-  # - script: pytest
-  #   displayName: 'Run tests'
-
-  # Publica el código como un artefacto para el despliegue
   - task: CopyFiles@2
     inputs:
       SourceFolder: '$(System.DefaultWorkingDirectory)'
@@ -32,9 +30,8 @@ steps:
       PathtoPublish: '$(Build.ArtifactStagingDirectory)'
       ArtifactName: 'drop'
 
-  # Despliega a Azure Web App (ajusta el nombre de tu app y conexión)
   - task: AzureWebApp@1
     inputs:
-      azureSubscription: 'MusicHubDownloader'
+      azureSubscription: 'AzureSi'
       appName: 'MusicHubDownloader'
-      package: '$(System.DefaultWorkingDirectory)'
+      package: '$(Build.ArtifactStagingDirectory)'
