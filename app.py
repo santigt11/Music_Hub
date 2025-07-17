@@ -176,18 +176,28 @@ def add_metadata_to_file(file_path, track_info, cover_url=None):
         return True
     
     try:
+        # Verificar que el archivo existe
+        if not os.path.exists(file_path):
+            print(f"Archivo no encontrado: {file_path}")
+            return False
+        
         # Detectar el tipo de archivo
         audio_file = File(file_path)
         if audio_file is None:
             print(f"No se pudo cargar el archivo: {file_path}")
             return False
         
-        # Obtener información del track (sin transliteración)
-        title = track_info.get('title', '')
-        artist = track_info.get('artist', '')
-        album = track_info.get('album', '')
-        year = track_info.get('year', '')
-        track_number = track_info.get('track_number', '')
+        # Obtener información del track (limpiar datos)
+        title = str(track_info.get('title', '')).strip()
+        artist = str(track_info.get('artist', '')).strip()
+        album = str(track_info.get('album', '')).strip()
+        year = str(track_info.get('year', '')).strip()
+        track_number = str(track_info.get('track_number', '')).strip()
+        
+        # Validar que tenemos información básica
+        if not title and not artist:
+            print("Sin información básica para metadatos")
+            return False
         
         print(f"Aplicando metadatos - Título: '{title}', Artista: '{artist}', Álbum: '{album}'")
         
@@ -195,49 +205,71 @@ def add_metadata_to_file(file_path, track_info, cover_url=None):
         cover_data = None
         if cover_url:
             try:
+                print(f"Descargando cover desde: {cover_url}")
                 cover_response = requests.get(cover_url, timeout=10)
                 if cover_response.status_code == 200:
                     cover_data = cover_response.content
-                    print("Cover descargado correctamente")
+                    print(f"Cover descargado correctamente: {len(cover_data)} bytes")
+                else:
+                    print(f"Error descargando cover: HTTP {cover_response.status_code}")
             except Exception as e:
                 print(f"Error descargando cover: {e}")
         
         # Agregar metadatos según el tipo de archivo
         if isinstance(audio_file, MP3):
             # Archivo MP3
+            print("Procesando archivo MP3...")
             if audio_file.tags is None:
                 audio_file.add_tags()
             
-            audio_file.tags.add(TIT2(encoding=3, text=title))
-            audio_file.tags.add(TPE1(encoding=3, text=artist))
-            audio_file.tags.add(TALB(encoding=3, text=album))
-            if year:
+            # Limpiar tags existentes para evitar duplicados
+            audio_file.tags.clear()
+            
+            if title:
+                audio_file.tags.add(TIT2(encoding=3, text=title))
+            if artist:
+                audio_file.tags.add(TPE1(encoding=3, text=artist))
+            if album:
+                audio_file.tags.add(TALB(encoding=3, text=album))
+            if year and year.isdigit():
                 audio_file.tags.add(TDRC(encoding=3, text=str(year)))
-            if track_number:
+            if track_number and track_number.isdigit():
                 audio_file.tags.add(TRCK(encoding=3, text=str(track_number)))
             
             # Agregar cover art
             if cover_data:
-                audio_file.tags.add(APIC(
-                    encoding=3,
-                    mime='image/jpeg',
-                    type=3,  # Cover (front)
-                    desc='Cover',
-                    data=cover_data
-                ))
+                try:
+                    audio_file.tags.add(APIC(
+                        encoding=3,
+                        mime='image/jpeg',
+                        type=3,  # Cover (front)
+                        desc='Cover',
+                        data=cover_data
+                    ))
+                    print("Cover agregado al MP3")
+                except Exception as e:
+                    print(f"Error agregando cover al MP3: {e}")
         
         elif isinstance(audio_file, FLAC):
             # Archivo FLAC
-            audio_file['TITLE'] = title
-            audio_file['ARTIST'] = artist
-            audio_file['ALBUM'] = album
-            if year:
+            print("Procesando archivo FLAC...")
+            
+            # Limpiar tags existentes
+            audio_file.clear()
+            
+            if title:
+                audio_file['TITLE'] = title
+            if artist:
+                audio_file['ARTIST'] = artist
+            if album:
+                audio_file['ALBUM'] = album
+            if year and year.isdigit():
                 audio_file['DATE'] = str(year)
-            if track_number:
+            if track_number and track_number.isdigit():
                 audio_file['TRACKNUMBER'] = str(track_number)
             
             # Agregar cover art para FLAC
-            if cover_data and MUTAGEN_AVAILABLE:
+            if cover_data:
                 try:
                     from mutagen.flac import Picture
                     picture = Picture()
@@ -246,8 +278,15 @@ def add_metadata_to_file(file_path, track_info, cover_url=None):
                     picture.desc = 'Cover'
                     picture.data = cover_data
                     audio_file.add_picture(picture)
+                    print("Cover agregado al FLAC")
                 except ImportError:
                     print("No se pudo importar Picture de mutagen")
+                except Exception as e:
+                    print(f"Error agregando cover al FLAC: {e}")
+        
+        else:
+            print(f"Tipo de archivo no soportado para metadatos: {type(audio_file)}")
+            return False
         
         # Guardar cambios
         audio_file.save()
@@ -267,6 +306,9 @@ class SpotifyHandler:
     def extract_spotify_id(self, url):
         """Extraer ID de Spotify desde URL"""
         try:
+            print(f"🔍 Extrayendo ID de Spotify de: {url}")
+            
+            # Limpiar URL
             if '?' in url:
                 url = url.split('?')[0]
             
@@ -285,21 +327,32 @@ class SpotifyHandler:
                 for pattern in pattern_list:
                     match = re.search(pattern, url)
                     if match:
-                        return type_name, match.group(1)
+                        spotify_id = match.group(1)
+                        print(f"✅ Encontrado {type_name} ID: {spotify_id}")
+                        return type_name, spotify_id
             
+            # URI format: spotify:track:id
             if url.startswith('spotify:'):
                 parts = url.split(':')
                 if len(parts) >= 3:
-                    return parts[1], parts[2]
+                    type_name = parts[1]
+                    spotify_id = parts[2]
+                    print(f"✅ Encontrado {type_name} ID (URI): {spotify_id}")
+                    return type_name, spotify_id
             
+            print("❌ No se pudo extraer ID de Spotify")
             return None, None
-        except:
+            
+        except Exception as e:
+            print(f"❌ Error extrayendo ID: {e}")
             return None, None
     
     def get_track_info_by_scraping(self, track_id):
-        """Obtener información del track por scraping"""
+        """Obtener información del track por scraping mejorado"""
         try:
-            # Probar diferentes URLs
+            print(f"🎵 Obteniendo info de Spotify para track: {track_id}")
+            
+            # URLs a probar
             urls = [
                 f"https://open.spotify.com/track/{track_id}",
                 f"https://open.spotify.com/intl-es/track/{track_id}",
@@ -307,24 +360,35 @@ class SpotifyHandler:
             ]
             
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
             }
             
             for url in urls:
                 try:
-                    print(f"Intentando scraping de: {url}")
+                    print(f"📡 Intentando: {url}")
                     response = requests.get(url, headers=headers, timeout=15)
                     response.raise_for_status()
                     
                     html = response.text
                     
-                    # Buscar JSON-LD con información de la canción
-                    json_ld_match = re.search(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL)
-                    if json_ld_match:
+                    # Método 1: Buscar JSON-LD estructurado
+                    json_ld_matches = re.finditer(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL)
+                    for match in json_ld_matches:
                         try:
-                            json_data = json.loads(json_ld_match.group(1))
+                            json_text = match.group(1).strip()
+                            json_data = json.loads(json_text)
+                            
+                            # Puede ser una lista o un objeto
                             if isinstance(json_data, list):
-                                json_data = json_data[0]
+                                for item in json_data:
+                                    if item.get('@type') == 'MusicRecording':
+                                        json_data = item
+                                        break
                             
                             if json_data.get('@type') == 'MusicRecording':
                                 title = json_data.get('name', '')
@@ -344,7 +408,7 @@ class SpotifyHandler:
                                     album = in_album.get('name', '')
                                 
                                 if title and artist:
-                                    print(f"Encontrado por JSON-LD: {title} - {artist}")
+                                    print(f"✅ JSON-LD: {title} - {artist}")
                                     return {
                                         'name': title,
                                         'artist': artist,
@@ -352,66 +416,52 @@ class SpotifyHandler:
                                         'duration': 0,
                                         'artists': [artist]
                                     }
-                        except:
-                            pass
+                        except json.JSONDecodeError:
+                            continue
                     
-                    # Buscar metadatos Open Graph
+                    # Método 2: Open Graph meta tags
                     og_title = re.search(r'<meta[^>]*property="og:title"[^>]*content="([^"]*)"', html)
                     og_description = re.search(r'<meta[^>]*property="og:description"[^>]*content="([^"]*)"', html)
                     
-                    # Buscar también meta tags de música
-                    music_song = re.search(r'<meta[^>]*property="music:song"[^>]*content="([^"]*)"', html)
-                    music_musician = re.search(r'<meta[^>]*property="music:musician"[^>]*content="([^"]*)"', html)
-                    
                     if og_title:
-                        title = og_title.group(1)
+                        title = og_title.group(1).strip()
                         artist = "Unknown"
                         album = "Unknown"
                         
-                        # Intentar extraer de la descripción primero
+                        # Parsear descripción
                         if og_description:
-                            desc = og_description.group(1)
-                            print(f"Descripción OG: {desc}")
+                            desc = og_description.group(1).strip()
+                            print(f"📋 Descripción OG: {desc}")
                             
-                            # Patrón: "Song by Artist on Album"
-                            song_by_pattern = re.search(r'(.+?) by (.+?) on (.+)', desc)
-                            if song_by_pattern:
-                                title = song_by_pattern.group(1).strip()
-                                artist = song_by_pattern.group(2).strip()
-                                album = song_by_pattern.group(3).strip()
                             # Patrón: "Song · Artist · Album"
-                            elif " · " in desc:
+                            if " · " in desc:
                                 parts = desc.split(" · ")
                                 if len(parts) >= 2:
-                                    # El primer elemento suele ser "Song"
+                                    artist = parts[1].strip()
                                     if len(parts) >= 3:
-                                        artist = parts[1].strip()
                                         album = parts[2].strip()
-                                    else:
-                                        artist = parts[1].strip()
+                            # Patrón: "Artist - Song"
+                            elif " - " in desc:
+                                parts = desc.split(" - ", 1)
+                                if len(parts) == 2:
+                                    artist = parts[0].strip()
+                                    title = parts[1].strip()
+                            # Patrón: "Song by Artist"
+                            elif " by " in desc:
+                                match = re.search(r'(.+?) by (.+)', desc)
+                                if match:
+                                    title = match.group(1).strip()
+                                    artist = match.group(2).strip()
                         
-                        # Si no se obtuvo artista de la descripción, buscar en el título
+                        # Si no se obtuvo artista, buscar en el título
                         if artist == "Unknown" and " - " in title:
-                            parts = title.split(" - ")
+                            parts = title.split(" - ", 1)
                             if len(parts) == 2:
                                 artist = parts[0].strip()
                                 title = parts[1].strip()
                         
-                        # Buscar información adicional en el HTML
-                        if artist == "Unknown":
-                            # Buscar el nombre del artista en el HTML
-                            artist_pattern = re.search(r'"artists":\[{"name":"([^"]+)"', html)
-                            if artist_pattern:
-                                artist = artist_pattern.group(1)
-                            else:
-                                # Buscar patrón alternativo
-                                artist_alt = re.search(r'data-testid="creator-link"[^>]*>([^<]+)<', html)
-                                if artist_alt:
-                                    artist = artist_alt.group(1).strip()
-                        
-                        print(f"Información extraída - Título: '{title}', Artista: '{artist}', Álbum: '{album}'")
-                        
                         if title and artist != "Unknown":
+                            print(f"✅ Open Graph: {title} - {artist}")
                             return {
                                 'name': title,
                                 'artist': artist,
@@ -419,15 +469,42 @@ class SpotifyHandler:
                                 'duration': 0,
                                 'artists': [artist]
                             }
+                    
+                    # Método 3: Buscar en el HTML directo
+                    # Buscar patrones de datos estructurados en el HTML
+                    patterns = [
+                        r'"name":"([^"]+)".*?"artists":\[.*?"name":"([^"]+)"',
+                        r'data-testid="entity-title"[^>]*>([^<]+)<.*?data-testid="creator-link"[^>]*>([^<]+)<',
+                    ]
+                    
+                    for pattern in patterns:
+                        match = re.search(pattern, html, re.DOTALL | re.IGNORECASE)
+                        if match:
+                            title = match.group(1).strip()
+                            artist = match.group(2).strip()
+                            
+                            if title and artist:
+                                print(f"✅ Patrón HTML: {title} - {artist}")
+                                return {
+                                    'name': title,
+                                    'artist': artist,
+                                    'album': 'Unknown',
+                                    'duration': 0,
+                                    'artists': [artist]
+                                }
                 
+                except requests.RequestException as e:
+                    print(f"❌ Error con {url}: {e}")
+                    continue
                 except Exception as e:
-                    print(f"Error con URL {url}: {e}")
+                    print(f"❌ Error general con {url}: {e}")
                     continue
             
-            print("No se pudo obtener información del track")
+            print("❌ No se pudo obtener información de ninguna URL")
             return None
+            
         except Exception as e:
-            print(f"Error general en scraping: {e}")
+            print(f"❌ Error en scraping: {e}")
             return None
 
 class QobuzDownloader:
@@ -681,10 +758,6 @@ class QobuzDownloader:
             print(f"❌ Error en búsqueda: {e}")
             return []
 
-
-
-
-
     def search_tracks_original(self, query, limit=15):
         """Método de búsqueda original (sin modificación de locale)"""
         try:
@@ -932,6 +1005,299 @@ class QobuzDownloader:
             traceback.print_exc()
             return None
 
+    def search_track_from_spotify_info(self, spotify_info):
+        """Buscar track en Qobuz usando información de Spotify"""
+        try:
+            print(f"🔍 Buscando en Qobuz: {spotify_info.get('name')} - {spotify_info.get('artist')}")
+            
+            artist = spotify_info.get('artist', '')
+            title = spotify_info.get('name', '')
+            
+            # Crear diferentes queries de búsqueda
+            queries = []
+            
+            # Query 1: Título y artista con comillas (búsqueda exacta)
+            if title and artist:
+                queries.append(f'"{title}" "{artist}"')
+                queries.append(f'{title} {artist}')
+                queries.append(f'{artist} {title}')
+            
+            # Query 2: Solo título si es muy específico
+            if title and len(title) > 10:
+                queries.append(f'"{title}"')
+            
+            # Query 3: Solo artista + palabras clave del título
+            if title and artist:
+                # Extraer palabras importantes del título (más de 3 caracteres)
+                title_words = [word for word in title.split() if len(word) > 3]
+                if title_words:
+                    queries.append(f'{artist} {" ".join(title_words[:3])}')
+            
+            for i, query in enumerate(queries, 1):
+                try:
+                    print(f"   🔍 Intento {i}/{len(queries)}: {query}")
+                    
+                    tracks = self.search_tracks(query, limit=20)
+                    
+                    if tracks:
+                        # Buscar mejor coincidencia
+                        best_match = self.find_best_match(tracks, spotify_info)
+                        if best_match:
+                            print(f"   ✅ Coincidencia encontrada!")
+                            return best_match
+                    
+                    if i < len(queries):
+                        time.sleep(0.5)  # Pausa entre búsquedas
+                        
+                except Exception as e:
+                    print(f"   ❌ Error en intento {i}: {e}")
+                    continue
+            
+            print(f"   ❌ No se encontró coincidencia en Qobuz")
+            return None
+            
+        except Exception as e:
+            print(f"❌ Error buscando en Qobuz: {e}")
+            return None
+    
+    def find_best_match(self, qobuz_tracks, spotify_info):
+        """Encontrar la mejor coincidencia entre tracks de Qobuz y Spotify"""
+        try:
+            spotify_title = spotify_info.get('name', '').lower().strip()
+            spotify_artist = spotify_info.get('artist', '').lower().strip()
+            spotify_duration = spotify_info.get('duration', 0)
+            
+            # Limpiar strings para comparación
+            def clean_string(s):
+                # Remover caracteres especiales y normalizar
+                import unicodedata
+                s = unicodedata.normalize('NFKD', s)
+                s = re.sub(r'[^\w\s]', '', s)
+                s = re.sub(r'\s+', ' ', s)
+                return s.lower().strip()
+            
+            spotify_title_clean = clean_string(spotify_title)
+            spotify_artist_clean = clean_string(spotify_artist)
+            
+            best_score = 0
+            best_track = None
+            
+            print(f"   🎯 Buscando coincidencia para: '{spotify_title}' - '{spotify_artist}'")
+            
+            for track in qobuz_tracks:
+                try:
+                    score = 0
+                    
+                    qobuz_title = track.get('title', '').lower().strip()
+                    qobuz_artist = track.get('performer', {}).get('name', '').lower().strip()
+                    qobuz_duration = track.get('duration', 0)
+                    
+                    qobuz_title_clean = clean_string(qobuz_title)
+                    qobuz_artist_clean = clean_string(qobuz_artist)
+                    
+                    # Puntuación por coincidencia de título (50 puntos máximo)
+                    if spotify_title_clean == qobuz_title_clean:
+                        score += 50
+                    elif spotify_title_clean in qobuz_title_clean or qobuz_title_clean in spotify_title_clean:
+                        score += 35
+                    elif self.similar_strings(spotify_title_clean, qobuz_title_clean):
+                        score += 25
+                    
+                    # Puntuación por coincidencia de artista (40 puntos máximo)
+                    if spotify_artist_clean == qobuz_artist_clean:
+                        score += 40
+                    elif spotify_artist_clean in qobuz_artist_clean or qobuz_artist_clean in spotify_artist_clean:
+                        score += 30
+                    elif self.similar_strings(spotify_artist_clean, qobuz_artist_clean):
+                        score += 20
+                    
+                    # Puntuación por duración similar (10 puntos máximo)
+                    if spotify_duration > 0 and qobuz_duration > 0:
+                        duration_diff = abs(spotify_duration - qobuz_duration)
+                        if duration_diff <= 5:  # ±5 segundos
+                            score += 10
+                        elif duration_diff <= 15:  # ±15 segundos
+                            score += 5
+                        elif duration_diff <= 30:  # ±30 segundos
+                            score += 2
+                    
+                    # Bonus por disponibilidad
+                    if track.get('downloadable', False):
+                        score += 5
+                    if track.get('streamable', False):
+                        score += 2
+                    
+                    # Debug info para los mejores candidatos
+                    if score > 50:
+                        print(f"      📊 Candidato (score: {score}): '{qobuz_title}' - '{qobuz_artist}'")
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_track = track
+                        
+                except Exception as e:
+                    print(f"      ❌ Error evaluando track: {e}")
+                    continue
+            
+            # Solo devolver si la coincidencia es suficientemente buena
+            if best_track and best_score >= 60:  # Umbral de 60%
+                print(f"   ✅ Mejor coincidencia (score: {best_score}): {best_track.get('title')} - {best_track.get('performer', {}).get('name')}")
+                return best_track
+            elif best_track:
+                print(f"   ⚠️  Coincidencia débil (score: {best_score}): {best_track.get('title')} - {best_track.get('performer', {}).get('name')}")
+                # Devolver de todas formas si el score es > 40
+                return best_track if best_score > 40 else None
+            else:
+                print(f"   ❌ No se encontró coincidencia suficiente")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error en find_best_match: {e}")
+            return None
+    
+    def similar_strings(self, s1, s2, threshold=0.6):
+        """Verificar si dos strings son similares usando palabras en común"""
+        try:
+            if not s1 or not s2:
+                return False
+                
+            words1 = set(s1.split())
+            words2 = set(s2.split())
+            
+            if len(words1) == 0 or len(words2) == 0:
+                return False
+            
+            # Calcular similitud basada en palabras comunes
+            common_words = words1.intersection(words2)
+            similarity = len(common_words) / max(len(words1), len(words2))
+            
+            return similarity >= threshold
+            
+        except:
+            return False
+
+    def search_lyrics_genius(self, query, limit=10):
+        """Buscar letra de canción usando Genius (método simplificado)"""
+        try:
+            print(f"🎤 Buscando letras para: {query}")
+            
+            # Headers para Genius
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            
+            # Buscar en Genius usando la API pública (sin key)
+            search_url = "https://genius.com/api/search/multi"
+            params = {
+                'q': query
+            }
+            
+            response = self.session.get(search_url, params=params, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Buscar resultados de canciones
+                songs = []
+                sections = data.get('response', {}).get('sections', [])
+                
+                for section in sections:
+                    if section.get('type') == 'song':
+                        hits = section.get('hits', [])
+                        for hit in hits:
+                            result = hit.get('result', {})
+                            if result:
+                                song_info = {
+                                    'title': result.get('title', ''),
+                                    'artist': result.get('primary_artist', {}).get('name', ''),
+                                    'url': result.get('url', ''),
+                                    'genius_id': result.get('id', ''),
+                                    'found_by_lyrics': True
+                                }
+                                songs.append(song_info)
+                                
+                                if len(songs) >= limit:
+                                    break
+                    
+                    if len(songs) >= limit:
+                        break
+                
+                print(f"✅ Encontradas {len(songs)} canciones por letra")
+                return songs
+            else:
+                print(f"❌ Error buscando en Genius: {response.status_code}")
+                return []
+                
+        except Exception as e:
+            print(f"❌ Error en búsqueda de letras: {e}")
+            return []
+    
+    def search_by_lyrics(self, query, limit=15):
+        """Buscar canciones por letra y luego en Qobuz"""
+        try:
+            print(f"🎤 Búsqueda por letra: {query}")
+            
+            # Buscar en Genius
+            genius_songs = self.search_lyrics_genius(query, limit=min(limit, 10))
+            
+            if not genius_songs:
+                print("❌ No se encontraron canciones por letra")
+                return []
+            
+            # Buscar cada canción encontrada en Qobuz
+            qobuz_matches = []
+            
+            for song in genius_songs:
+                try:
+                    # Crear query para Qobuz
+                    artist = song.get('artist', '')
+                    title = song.get('title', '')
+                    
+                    if not artist or not title:
+                        continue
+                    
+                    print(f"   🔍 Buscando en Qobuz: {title} - {artist}")
+                    
+                    # Buscar en Qobuz
+                    spotify_info = {
+                        'name': title,
+                        'artist': artist,
+                        'album': '',
+                        'duration': 0
+                    }
+                    
+                    qobuz_track = self.search_track_from_spotify_info(spotify_info)
+                    
+                    if qobuz_track:
+                        # Agregar información de que fue encontrado por letra
+                        qobuz_track['found_by_lyrics'] = True
+                        qobuz_track['genius_match'] = True
+                        qobuz_track['genius_url'] = song.get('url', '')
+                        qobuz_track['matched_fragment'] = query
+                        
+                        qobuz_matches.append(qobuz_track)
+                        
+                        print(f"   ✅ Encontrado en Qobuz: {qobuz_track.get('title')}")
+                    else:
+                        print(f"   ❌ No encontrado en Qobuz")
+                    
+                    # Límite de matches
+                    if len(qobuz_matches) >= limit:
+                        break
+                        
+                    time.sleep(0.3)  # Pausa entre búsquedas
+                    
+                except Exception as e:
+                    print(f"   ❌ Error procesando {song}: {e}")
+                    continue
+            
+            print(f"✅ Encontrados {len(qobuz_matches)} tracks por letra en Qobuz")
+            return qobuz_matches
+            
+        except Exception as e:
+            print(f"❌ Error en búsqueda por letra: {e}")
+            return []
+
 # Inicializar downloader global
 print("Inicializando downloader...")
 downloader = QobuzDownloader()
@@ -1007,18 +1373,34 @@ def search():
                 url_type, spotify_id = downloader.spotify.extract_spotify_id(query)
                 
                 if url_type == 'track' and spotify_id:
-                    # Buscar track individual
+                    # Buscar track individual usando el método mejorado
                     spotify_info = downloader.spotify.get_track_info_by_scraping(spotify_id)
                     if spotify_info:
                         print(f"Información de Spotify obtenida: {spotify_info}")
-                        # Aquí buscaríamos en Qobuz basado en la info de Spotify
-                        # qobuz_track = downloader.search_track_from_spotify_info(spotify_info)
-                        # Por ahora simplificado
-                        results = []
+                        # Buscar en Qobuz usando la info de Spotify
+                        qobuz_track = downloader.search_track_from_spotify_info(spotify_info)
+                        if qobuz_track:
+                            result_data = {
+                                'id': qobuz_track.get('id'),
+                                'title': qobuz_track.get('title'),
+                                'artist': qobuz_track.get('performer', {}).get('name', 'Unknown'),
+                                'album': qobuz_track.get('album', {}).get('title', 'Unknown'),
+                                'duration': qobuz_track.get('duration', 0),
+                                'downloadable': qobuz_track.get('downloadable', False),
+                                'cover': qobuz_track.get('album', {}).get('image', {}).get('small', ''),
+                                'source': 'qobuz',
+                                'spotify_match': True,
+                                'spotify_info': spotify_info
+                            }
+                            results = [result_data]
+                        else:
+                            print("No se encontró coincidencia en Qobuz")
+                            results = []
                     else:
                         print("No se pudo obtener información de Spotify")
                         results = []
                 else:
+                    print(f"No se pudo extraer ID de Spotify o tipo no soportado: {url_type}")
                     results = []
             else:
                 # Búsqueda de texto en Spotify (simplificado - buscar en Qobuz)
@@ -1046,6 +1428,164 @@ def search():
         
     except Exception as e:
         print(f"Error en búsqueda: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/test-metadata', methods=['POST'])
+def test_metadata():
+    """API para probar funcionalidad de metadatos"""
+    try:
+        data = request.get_json()
+        track_id = data.get('track_id')
+        
+        if not track_id:
+            return jsonify({'success': False, 'error': 'Track ID requerido'}), 400
+        
+        print(f"🏷️ Probando metadatos para track: {track_id}")
+        
+        # Obtener información del track
+        track_info = downloader.get_track_info(track_id)
+        if not track_info:
+            return jsonify({'success': False, 'error': 'Track no encontrado'}), 404
+        
+        # Preparar metadatos
+        performer = track_info.get('performer', {})
+        artist_name = performer.get('name', '') if isinstance(performer, dict) else ''
+        
+        album_info = track_info.get('album', {})
+        album_title = album_info.get('title', '') if isinstance(album_info, dict) else ''
+        released_at = album_info.get('released_at', '') if isinstance(album_info, dict) else ''
+        
+        # Extraer año
+        year = ''
+        if released_at:
+            if isinstance(released_at, int):
+                try:
+                    year = str(datetime.fromtimestamp(released_at).year)
+                except:
+                    year = ''
+            elif isinstance(released_at, str) and len(released_at) >= 4:
+                year = released_at[:4]
+        
+        # Obtener cover URL
+        cover_url = None
+        if isinstance(album_info, dict) and 'image' in album_info:
+            images = album_info['image']
+            if isinstance(images, dict):
+                cover_url = images.get('large') or images.get('small')
+        
+        metadata = {
+            'title': track_info.get('title', ''),
+            'artist': artist_name,
+            'album': album_title,
+            'year': year,
+            'track_number': str(track_info.get('track_number', '')) if track_info.get('track_number') else ''
+        }
+        
+        return jsonify({
+            'success': True,
+            'metadata': metadata,
+            'cover_url': cover_url,
+            'mutagen_available': MUTAGEN_AVAILABLE,
+            'track_info': {
+                'title': track_info.get('title'),
+                'artist': artist_name,
+                'album': album_title,
+                'downloadable': track_info.get('downloadable', False),
+                'streamable': track_info.get('streamable', False)
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ Error probando metadatos: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/spotify-info', methods=['POST'])
+def spotify_info():
+    """API para obtener información de un track de Spotify"""
+    try:
+        data = request.get_json()
+        url = data.get('url', '')
+        
+        if not url:
+            return jsonify({'success': False, 'error': 'URL requerida'}), 400
+        
+        print(f"🎵 Obteniendo info de Spotify desde: {url}")
+        
+        # Extraer ID de Spotify
+        url_type, spotify_id = downloader.spotify.extract_spotify_id(url)
+        
+        if not spotify_id:
+            return jsonify({'success': False, 'error': 'No se pudo extraer ID de Spotify'}), 400
+        
+        if url_type != 'track':
+            return jsonify({'success': False, 'error': f'Tipo {url_type} no soportado, solo tracks'}), 400
+        
+        # Obtener información del track
+        spotify_info = downloader.spotify.get_track_info_by_scraping(spotify_id)
+        
+        if not spotify_info:
+            return jsonify({'success': False, 'error': 'No se pudo obtener información de Spotify'}), 404
+        
+        return jsonify({
+            'success': True,
+            'spotify_info': spotify_info,
+            'spotify_id': spotify_id,
+            'url_type': url_type
+        })
+        
+    except Exception as e:
+        print(f"❌ Error obteniendo info de Spotify: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/search-lyrics', methods=['POST'])
+def search_lyrics():
+    """API para buscar canciones por letra"""
+    try:
+        data = request.get_json()
+        query = data.get('query', '')
+        limit = data.get('limit', 10)
+        
+        print(f"🎤 Búsqueda por letra recibida - Query: {query}")
+        
+        if not query:
+            return jsonify({'success': False, 'error': 'Query vacío'}), 400
+        
+        # Buscar por letra usando el método implementado
+        tracks = downloader.search_by_lyrics(query, limit=limit)
+        
+        results = []
+        for track in tracks:
+            result_data = {
+                'id': track.get('id'),
+                'title': track.get('title'),
+                'artist': track.get('performer', {}).get('name', 'Unknown'),
+                'album': track.get('album', {}).get('title', 'Unknown'),
+                'duration': track.get('duration', 0),
+                'downloadable': track.get('downloadable', False),
+                'cover': track.get('album', {}).get('image', {}).get('small', ''),
+                'source': 'qobuz',
+                'found_by_lyrics': True
+            }
+            
+            # Agregar información adicional de búsqueda por letra
+            if track.get('genius_match'):
+                result_data['genius_match'] = True
+            if track.get('matched_fragment'):
+                result_data['matched_fragment'] = track.get('matched_fragment')
+            if track.get('genius_url'):
+                result_data['genius_url'] = track.get('genius_url')
+            
+            results.append(result_data)
+        
+        return jsonify({
+            'success': True,
+            'results': results,
+            'total': len(results),
+            'search_type': 'lyrics'
+        })
+        
+    except Exception as e:
+        print(f"❌ Error en búsqueda por letra: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/download', methods=['POST'])

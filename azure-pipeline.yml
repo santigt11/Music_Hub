@@ -1,0 +1,40 @@
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.x'
+      addToPath: true
+
+  - script: python -m pip install --upgrade pip
+    displayName: 'Upgrade pip'
+
+  - script: pip install -r requirements.txt
+    displayName: 'Install dependencies'
+
+  # (Opcional) Ejecuta pruebas si tienes tests
+  # - script: pytest
+  #   displayName: 'Run tests'
+
+  # Publica el código como un artefacto para el despliegue
+  - task: CopyFiles@2
+    inputs:
+      SourceFolder: '$(System.DefaultWorkingDirectory)'
+      Contents: '**'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: 'drop'
+
+  # Despliega a Azure Web App (ajusta el nombre de tu app y conexión)
+  - task: AzureWebApp@1
+    inputs:
+      azureSubscription: '<NombreDeTuConexionDeServicio>'
+      appName: '<NombreDeTuWebApp>'
+      package: '$(System.DefaultWorkingDirectory)'
