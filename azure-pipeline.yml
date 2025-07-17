@@ -2,16 +2,14 @@ trigger:
   - main
 
 pool:
-  vmImage: 'ubuntu-latest'
+  name: Default
 
 variables:
   pythonVersion: '3.10'
 
 steps:
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '$(pythonVersion)'
-      addToPath: true
+  - script: python --version
+    displayName: 'Check Python Version'
 
   - script: python -m pip install --upgrade pip
     displayName: 'Upgrade pip'
