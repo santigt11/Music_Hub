@@ -35,6 +35,6 @@ steps:
   # Despliega a Azure Web App (ajusta el nombre de tu app y conexión)
   - task: AzureWebApp@1
     inputs:
-      azureSubscription: '<NombreDeTuConexionDeServicio>'
-      appName: '<NombreDeTuWebApp>'
+      azureSubscription: 'MusicHubDownloader'
+      appName: 'MusicHubDownloader'
       package: '$(System.DefaultWorkingDirectory)'
