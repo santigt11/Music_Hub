@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 Qobuz/Spotify Downloader Web API
 Backend Flask para la página web
@@ -45,7 +42,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Configuración del token (SOLO TU PUEDES CAMBIAR ESTO)
-QOBUZ_TOKEN = "bUGu5cqbbYpdyVuSGqfrH_SB_cDFecdWyV-1PQgtzU2ToL4akC6jP18sWhZf4i15lWsLcDFQEJhiLasbpYfcfQ"
+QOBUZ_TOKEN = "wGhVEBhBrpMHmQ1TnZ7njn0_WuGUUeujgHP-KBerx1DRiYeKcgO0Czm8_Us6W9WvxPWmJd0IEnEBi75FE0qE1w"
 
 def get_token_info(token=None):
     """
@@ -176,28 +173,18 @@ def add_metadata_to_file(file_path, track_info, cover_url=None):
         return True
     
     try:
-        # Verificar que el archivo existe
-        if not os.path.exists(file_path):
-            print(f"Archivo no encontrado: {file_path}")
-            return False
-        
         # Detectar el tipo de archivo
         audio_file = File(file_path)
         if audio_file is None:
             print(f"No se pudo cargar el archivo: {file_path}")
             return False
         
-        # Obtener información del track (limpiar datos)
-        title = str(track_info.get('title', '')).strip()
-        artist = str(track_info.get('artist', '')).strip()
-        album = str(track_info.get('album', '')).strip()
-        year = str(track_info.get('year', '')).strip()
-        track_number = str(track_info.get('track_number', '')).strip()
-        
-        # Validar que tenemos información básica
-        if not title and not artist:
-            print("Sin información básica para metadatos")
-            return False
+        # Obtener información del track (sin transliteración)
+        title = track_info.get('title', '')
+        artist = track_info.get('artist', '')
+        album = track_info.get('album', '')
+        year = track_info.get('year', '')
+        track_number = track_info.get('track_number', '')
         
         print(f"Aplicando metadatos - Título: '{title}', Artista: '{artist}', Álbum: '{album}'")
         
@@ -205,71 +192,49 @@ def add_metadata_to_file(file_path, track_info, cover_url=None):
         cover_data = None
         if cover_url:
             try:
-                print(f"Descargando cover desde: {cover_url}")
                 cover_response = requests.get(cover_url, timeout=10)
                 if cover_response.status_code == 200:
                     cover_data = cover_response.content
-                    print(f"Cover descargado correctamente: {len(cover_data)} bytes")
-                else:
-                    print(f"Error descargando cover: HTTP {cover_response.status_code}")
+                    print("Cover descargado correctamente")
             except Exception as e:
                 print(f"Error descargando cover: {e}")
         
         # Agregar metadatos según el tipo de archivo
         if isinstance(audio_file, MP3):
             # Archivo MP3
-            print("Procesando archivo MP3...")
             if audio_file.tags is None:
                 audio_file.add_tags()
             
-            # Limpiar tags existentes para evitar duplicados
-            audio_file.tags.clear()
-            
-            if title:
-                audio_file.tags.add(TIT2(encoding=3, text=title))
-            if artist:
-                audio_file.tags.add(TPE1(encoding=3, text=artist))
-            if album:
-                audio_file.tags.add(TALB(encoding=3, text=album))
-            if year and year.isdigit():
+            audio_file.tags.add(TIT2(encoding=3, text=title))
+            audio_file.tags.add(TPE1(encoding=3, text=artist))
+            audio_file.tags.add(TALB(encoding=3, text=album))
+            if year:
                 audio_file.tags.add(TDRC(encoding=3, text=str(year)))
-            if track_number and track_number.isdigit():
+            if track_number:
                 audio_file.tags.add(TRCK(encoding=3, text=str(track_number)))
             
             # Agregar cover art
             if cover_data:
-                try:
-                    audio_file.tags.add(APIC(
-                        encoding=3,
-                        mime='image/jpeg',
-                        type=3,  # Cover (front)
-                        desc='Cover',
-                        data=cover_data
-                    ))
-                    print("Cover agregado al MP3")
-                except Exception as e:
-                    print(f"Error agregando cover al MP3: {e}")
+                audio_file.tags.add(APIC(
+                    encoding=3,
+                    mime='image/jpeg',
+                    type=3,  # Cover (front)
+                    desc='Cover',
+                    data=cover_data
+                ))
         
         elif isinstance(audio_file, FLAC):
             # Archivo FLAC
-            print("Procesando archivo FLAC...")
-            
-            # Limpiar tags existentes
-            audio_file.clear()
-            
-            if title:
-                audio_file['TITLE'] = title
-            if artist:
-                audio_file['ARTIST'] = artist
-            if album:
-                audio_file['ALBUM'] = album
-            if year and year.isdigit():
+            audio_file['TITLE'] = title
+            audio_file['ARTIST'] = artist
+            audio_file['ALBUM'] = album
+            if year:
                 audio_file['DATE'] = str(year)
-            if track_number and track_number.isdigit():
+            if track_number:
                 audio_file['TRACKNUMBER'] = str(track_number)
             
             # Agregar cover art para FLAC
-            if cover_data:
+            if cover_data and MUTAGEN_AVAILABLE:
                 try:
                     from mutagen.flac import Picture
                     picture = Picture()
@@ -278,15 +243,8 @@ def add_metadata_to_file(file_path, track_info, cover_url=None):
                     picture.desc = 'Cover'
                     picture.data = cover_data
                     audio_file.add_picture(picture)
-                    print("Cover agregado al FLAC")
                 except ImportError:
                     print("No se pudo importar Picture de mutagen")
-                except Exception as e:
-                    print(f"Error agregando cover al FLAC: {e}")
-        
-        else:
-            print(f"Tipo de archivo no soportado para metadatos: {type(audio_file)}")
-            return False
         
         # Guardar cambios
         audio_file.save()
@@ -1373,34 +1331,18 @@ def search():
                 url_type, spotify_id = downloader.spotify.extract_spotify_id(query)
                 
                 if url_type == 'track' and spotify_id:
-                    # Buscar track individual usando el método mejorado
+                    # Buscar track individual
                     spotify_info = downloader.spotify.get_track_info_by_scraping(spotify_id)
                     if spotify_info:
                         print(f"Información de Spotify obtenida: {spotify_info}")
-                        # Buscar en Qobuz usando la info de Spotify
-                        qobuz_track = downloader.search_track_from_spotify_info(spotify_info)
-                        if qobuz_track:
-                            result_data = {
-                                'id': qobuz_track.get('id'),
-                                'title': qobuz_track.get('title'),
-                                'artist': qobuz_track.get('performer', {}).get('name', 'Unknown'),
-                                'album': qobuz_track.get('album', {}).get('title', 'Unknown'),
-                                'duration': qobuz_track.get('duration', 0),
-                                'downloadable': qobuz_track.get('downloadable', False),
-                                'cover': qobuz_track.get('album', {}).get('image', {}).get('small', ''),
-                                'source': 'qobuz',
-                                'spotify_match': True,
-                                'spotify_info': spotify_info
-                            }
-                            results = [result_data]
-                        else:
-                            print("No se encontró coincidencia en Qobuz")
-                            results = []
+                        # Aquí buscaríamos en Qobuz basado en la info de Spotify
+                        # qobuz_track = downloader.search_track_from_spotify_info(spotify_info)
+                        # Por ahora simplificado
+                        results = []
                     else:
                         print("No se pudo obtener información de Spotify")
                         results = []
                 else:
-                    print(f"No se pudo extraer ID de Spotify o tipo no soportado: {url_type}")
                     results = []
             else:
                 # Búsqueda de texto en Spotify (simplificado - buscar en Qobuz)
@@ -1428,164 +1370,6 @@ def search():
         
     except Exception as e:
         print(f"Error en búsqueda: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/test-metadata', methods=['POST'])
-def test_metadata():
-    """API para probar funcionalidad de metadatos"""
-    try:
-        data = request.get_json()
-        track_id = data.get('track_id')
-        
-        if not track_id:
-            return jsonify({'success': False, 'error': 'Track ID requerido'}), 400
-        
-        print(f"🏷️ Probando metadatos para track: {track_id}")
-        
-        # Obtener información del track
-        track_info = downloader.get_track_info(track_id)
-        if not track_info:
-            return jsonify({'success': False, 'error': 'Track no encontrado'}), 404
-        
-        # Preparar metadatos
-        performer = track_info.get('performer', {})
-        artist_name = performer.get('name', '') if isinstance(performer, dict) else ''
-        
-        album_info = track_info.get('album', {})
-        album_title = album_info.get('title', '') if isinstance(album_info, dict) else ''
-        released_at = album_info.get('released_at', '') if isinstance(album_info, dict) else ''
-        
-        # Extraer año
-        year = ''
-        if released_at:
-            if isinstance(released_at, int):
-                try:
-                    year = str(datetime.fromtimestamp(released_at).year)
-                except:
-                    year = ''
-            elif isinstance(released_at, str) and len(released_at) >= 4:
-                year = released_at[:4]
-        
-        # Obtener cover URL
-        cover_url = None
-        if isinstance(album_info, dict) and 'image' in album_info:
-            images = album_info['image']
-            if isinstance(images, dict):
-                cover_url = images.get('large') or images.get('small')
-        
-        metadata = {
-            'title': track_info.get('title', ''),
-            'artist': artist_name,
-            'album': album_title,
-            'year': year,
-            'track_number': str(track_info.get('track_number', '')) if track_info.get('track_number') else ''
-        }
-        
-        return jsonify({
-            'success': True,
-            'metadata': metadata,
-            'cover_url': cover_url,
-            'mutagen_available': MUTAGEN_AVAILABLE,
-            'track_info': {
-                'title': track_info.get('title'),
-                'artist': artist_name,
-                'album': album_title,
-                'downloadable': track_info.get('downloadable', False),
-                'streamable': track_info.get('streamable', False)
-            }
-        })
-        
-    except Exception as e:
-        print(f"❌ Error probando metadatos: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/spotify-info', methods=['POST'])
-def spotify_info():
-    """API para obtener información de un track de Spotify"""
-    try:
-        data = request.get_json()
-        url = data.get('url', '')
-        
-        if not url:
-            return jsonify({'success': False, 'error': 'URL requerida'}), 400
-        
-        print(f"🎵 Obteniendo info de Spotify desde: {url}")
-        
-        # Extraer ID de Spotify
-        url_type, spotify_id = downloader.spotify.extract_spotify_id(url)
-        
-        if not spotify_id:
-            return jsonify({'success': False, 'error': 'No se pudo extraer ID de Spotify'}), 400
-        
-        if url_type != 'track':
-            return jsonify({'success': False, 'error': f'Tipo {url_type} no soportado, solo tracks'}), 400
-        
-        # Obtener información del track
-        spotify_info = downloader.spotify.get_track_info_by_scraping(spotify_id)
-        
-        if not spotify_info:
-            return jsonify({'success': False, 'error': 'No se pudo obtener información de Spotify'}), 404
-        
-        return jsonify({
-            'success': True,
-            'spotify_info': spotify_info,
-            'spotify_id': spotify_id,
-            'url_type': url_type
-        })
-        
-    except Exception as e:
-        print(f"❌ Error obteniendo info de Spotify: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/search-lyrics', methods=['POST'])
-def search_lyrics():
-    """API para buscar canciones por letra"""
-    try:
-        data = request.get_json()
-        query = data.get('query', '')
-        limit = data.get('limit', 10)
-        
-        print(f"🎤 Búsqueda por letra recibida - Query: {query}")
-        
-        if not query:
-            return jsonify({'success': False, 'error': 'Query vacío'}), 400
-        
-        # Buscar por letra usando el método implementado
-        tracks = downloader.search_by_lyrics(query, limit=limit)
-        
-        results = []
-        for track in tracks:
-            result_data = {
-                'id': track.get('id'),
-                'title': track.get('title'),
-                'artist': track.get('performer', {}).get('name', 'Unknown'),
-                'album': track.get('album', {}).get('title', 'Unknown'),
-                'duration': track.get('duration', 0),
-                'downloadable': track.get('downloadable', False),
-                'cover': track.get('album', {}).get('image', {}).get('small', ''),
-                'source': 'qobuz',
-                'found_by_lyrics': True
-            }
-            
-            # Agregar información adicional de búsqueda por letra
-            if track.get('genius_match'):
-                result_data['genius_match'] = True
-            if track.get('matched_fragment'):
-                result_data['matched_fragment'] = track.get('matched_fragment')
-            if track.get('genius_url'):
-                result_data['genius_url'] = track.get('genius_url')
-            
-            results.append(result_data)
-        
-        return jsonify({
-            'success': True,
-            'results': results,
-            'total': len(results),
-            'search_type': 'lyrics'
-        })
-        
-    except Exception as e:
-        print(f"❌ Error en búsqueda por letra: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/download', methods=['POST'])
