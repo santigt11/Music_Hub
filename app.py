@@ -1678,9 +1678,9 @@ if __name__ == '__main__':
     if not os.environ.get('FUNCTIONS_WORKER_RUNTIME') and not os.environ.get('VERCEL'):
         app.run(debug=debug_mode, host='0.0.0.0', port=port)
 
-# Handler para Vercel - Función WSGI
-def handler(environ, start_response):
-    return app(environ, start_response)
-
-# También exportar la app directamente para Vercel
+# Exportar la aplicación para Vercel
 application = app
+
+# Handler alternativo para Vercel (si es necesario)
+def handler(request):
+    return app
