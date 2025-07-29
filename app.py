@@ -41,8 +41,8 @@ import string
 app = Flask(__name__)
 CORS(app)
 
-# Configuración del token (SOLO TU PUEDES CAMBIAR ESTO)
-QOBUZ_TOKEN = "wGhVEBhBrpMHmQ1TnZ7njn0_WuGUUeujgHP-KBerx1DRiYeKcgO0Czm8_Us6W9WvxPWmJd0IEnEBi75FE0qE1w"
+# Configuración del token - Lee desde variable de entorno o usa el valor por defecto
+QOBUZ_TOKEN = os.environ.get('QOBUZ_TOKEN', "wGhVEBhBrpMHmQ1TnZ7njn0_WuGUUeujgHP-KBerx1DRiYeKcgO0Czm8_Us6W9WvxPWmJd0IEnEBi75FE0qE1w")
 
 def get_token_info(token=None):
     """
@@ -832,11 +832,9 @@ class QobuzDownloader:
                 title = track_data.get('title', 'Unknown')
                 artist = track_data.get('performer', {}).get('name', 'Unknown')
                 streamable = track_data.get('streamable', False)
-                downloadable = track_data.get('downloadable', False)
                 
                 print(f"📊 Track: {title} - {artist}")
                 print(f"🔊 Streamable: {streamable}")
-                print(f"💾 Downloadable: {downloadable}")
                 
                 # Verificar restricciones
                 restrictions = track_data.get('restrictions', [])
@@ -870,13 +868,8 @@ class QobuzDownloader:
             
             # Verificar si el track tiene streaming/descarga disponible
             streamable = track_info.get('streamable', False)
-            downloadable = track_info.get('downloadable', False)
             
-            print(f"📊 Track info - Streamable: {streamable}, Downloadable: {downloadable}")
-            
-            if not streamable and not downloadable:
-                print(f"❌ Track no disponible para streaming/descarga")
-                return None
+            print(f"📊 Track info - Streamable: {streamable}")
             
             # Generar timestamp actual (requerido por la API de Qobuz)
             unix_timestamp = int(time.time())
@@ -1078,10 +1071,7 @@ class QobuzDownloader:
                             score += 5
                         elif duration_diff <= 30:  # ±30 segundos
                             score += 2
-                    
-                    # Bonus por disponibilidad
-                    if track.get('downloadable', False):
-                        score += 5
+
                     if track.get('streamable', False):
                         score += 2
                     
@@ -1308,7 +1298,6 @@ def search():
                     'artist': track.get('performer', {}).get('name', 'Unknown'),
                     'album': track.get('album', {}).get('title', 'Unknown'),
                     'duration': track.get('duration', 0),
-                    'downloadable': track.get('downloadable', False),
                     'cover': track.get('album', {}).get('image', {}).get('small', ''),
                     'source': 'qobuz'
                 }
@@ -1357,7 +1346,6 @@ def search():
                         'artist': track.get('performer', {}).get('name', 'Unknown'),
                         'album': track.get('album', {}).get('title', 'Unknown'),
                         'duration': track.get('duration', 0),
-                        'downloadable': track.get('downloadable', False),
                         'cover': track.get('album', {}).get('image', {}).get('small', ''),
                         'source': 'qobuz'
                     })
@@ -1392,11 +1380,6 @@ def download():
             return jsonify({'error': 'Track no encontrado'}), 404
         
         print(f"✅ Track encontrado: {track_info.get('title')} - {track_info.get('performer', {}).get('name')}")
-        
-        # Verificar si el track es descargable
-        if not track_info.get('downloadable', False):
-            print(f"⚠️  Track no descargable: {track_id}")
-            return jsonify({'error': 'Este track no está disponible para descarga'}), 403
         
         # Obtener URL de descarga
         print(f"🔗 Obteniendo URL de descarga...")
@@ -1691,6 +1674,10 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_ENV') == 'development'
     
-    # Solo ejecutar si no estamos en Azure Functions
-    if not os.environ.get('FUNCTIONS_WORKER_RUNTIME'):
+    # Solo ejecutar si no estamos en Azure Functions o Vercel
+    if not os.environ.get('FUNCTIONS_WORKER_RUNTIME') and not os.environ.get('VERCEL'):
         app.run(debug=debug_mode, host='0.0.0.0', port=port)
+
+# Handler para Vercel
+def handler(request):
+    return app
