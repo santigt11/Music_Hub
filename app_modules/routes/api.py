@@ -5,13 +5,16 @@ con la semántica previa mientras se simplifica la implementación. Falta todav�
 funcionalidades avanzadas (lyrics, locale forcing, matching extendido)."""
 from __future__ import annotations
 from flask import Blueprint, request, jsonify, send_file
-import os, tempfile, json, time, hashlib
+import os, tempfile, time, hashlib, logging
 import requests
 from ..app_factory import get_downloader
 from ..utils.metadata import add_metadata_to_file
 from ..utils.token import get_token_info
 
 api_bp = Blueprint('api', __name__)
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO)
 
 downloader = get_downloader()
 
@@ -75,7 +78,6 @@ def search():
                                 'source': 'qobuz',
                                 'mapped_from_spotify': True
                             })
-                # TODO: soporte playlist
             else:
                 tracks = downloader.search_tracks_with_locale(query, limit=15, force_latin=True)
                 for track in tracks:
@@ -90,6 +92,7 @@ def search():
                     })
         return jsonify({'success': True, 'results': results, 'total': len(results)})
     except Exception as e:
+        logger.exception("Error en /search")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @api_bp.route('/download', methods=['POST'])
@@ -108,6 +111,7 @@ def download():
             return jsonify({'success': True,'download_url': download_url,'quality': downloader.quality_map.get(quality, {}).get('name',''),'track_info': {'title': track_info.get('title'),'artist': track_info.get('performer', {}).get('name'),'album': track_info.get('album', {}).get('title')}})
         return jsonify({'success': False,'error': 'No se pudo obtener enlace de descarga'}), 400
     except Exception as e:
+        logger.exception("Error en /download")
         return jsonify({'success': False,'error': str(e)}), 500
 
 @api_bp.route('/proxy-download')
@@ -150,6 +154,7 @@ def proxy_download():
                 pass
         return send_file(temp_file.name, as_attachment=True, download_name=filename, mimetype='application/octet-stream')
     except Exception as e:
+        logger.exception("Error en /proxy-download")
         return jsonify({'success': False,'error': str(e)}), 500
 
 @api_bp.route('/preview', methods=['POST'])
@@ -186,4 +191,5 @@ def get_preview():
             return jsonify({'success': True,'preview_url': preview_url,'track_info': {'title': track_info.get('title', 'Unknown'),'artist': track_info.get('performer', {}).get('name', 'Unknown'),'album': track_info.get('album', {}).get('title', 'Unknown'),'cover': track_info.get('album', {}).get('image', {}).get('small', '')}})
         return jsonify({'success': False,'error': 'Preview no disponible'}), 404
     except Exception as e:
+        logger.exception("Error en /preview")
         return jsonify({'success': False, 'error': str(e)}), 500

@@ -1,6 +1,14 @@
-"""Factory para crear la aplicación Flask y exponer singletons"""
+"""Factory para crear la aplicación Flask y exponer singletons.
+
+El 500 en '/' provenía de TemplateNotFound porque al instanciar Flask con
+``Flask(__name__)`` dentro de ``app_modules`` buscaba ``app_modules/templates``.
+Las plantillas reales viven en ``../templates`` y los estáticos en ``../static``.
+Se ajustan las rutas explícitamente.
+"""
 from __future__ import annotations
-from flask import Flask
+import os
+from pathlib import Path
+from flask import Flask, send_from_directory
 from flask_cors import CORS
 from .services.qobuz import QobuzDownloader
 
@@ -19,15 +27,37 @@ def create_app() -> Flask:
     global _app
     if _app is not None:
         return _app
-    app = Flask(__name__)
+
+    # Base del proyecto (carpeta que contiene app_modules)
+    base_dir = Path(__file__).resolve().parent.parent
+    templates_dir = base_dir / 'templates'
+    static_dir = base_dir / 'static'
+
+    app = Flask(
+        __name__,
+        template_folder=str(templates_dir),
+        static_folder=str(static_dir)
+    )
     CORS(app)
-    # Registro de blueprints
+
+    # Registro de blueprints API
     from .routes.api import api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
+
     @app.route('/')
     def index():
         from flask import render_template
         return render_template('index.html')
+
+    @app.route('/favicon.ico')
+    def favicon():
+        """Intentar servir favicon si existe; si no, 204 para evitar spam de 404."""
+        ico_path = static_dir / 'favicon.ico'
+        if ico_path.exists():
+            # send_from_directory necesita ruta absoluta y filename
+            return send_from_directory(static_dir, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+        return ('', 204)
+
     _app = app
     return app
 
