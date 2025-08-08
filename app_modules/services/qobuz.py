@@ -185,24 +185,44 @@ class QobuzDownloader:
 
     # --- Matching desde Spotify ---
     def search_track_from_spotify_info(self, spotify_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        artist = spotify_info.get('artist', '')
-        title = spotify_info.get('name', '')
-        queries = []
+        import unicodedata, re as _re
+        def norm(s: str) -> str:
+            s = unicodedata.normalize('NFKD', s)
+            s = ''.join(c for c in s if not unicodedata.combining(c))
+            s = _re.sub(r'[\(\)\[\]\-_/]', ' ', s)
+            s = _re.sub(r'\s+', ' ', s)
+            return s.strip()
+        artist = norm(spotify_info.get('artist', ''))
+        title = norm(spotify_info.get('name', ''))
+        base_queries = []
         if title and artist:
-            queries.extend([f'"{title}" "{artist}"', f'{title} {artist}', f'{artist} {title}'])
-        if title and len(title) > 10:
-            queries.append(f'"{title}"')
-        if title and artist:
-            words = [w for w in title.split() if len(w) > 3]
-            if words:
-                queries.append(f'{artist} {" ".join(words[:3])}')
+            base_queries.extend([
+                f'"{title}" "{artist}"',
+                f'{title} {artist}',
+                f'{artist} {title}',
+            ])
+        if title:
+            base_queries.append(f'"{title}"')
+        # Eliminar palabras comunes muy cortas (stop-words simples)
+        stop = {'the','and','feat','ft','with','vs'}
+        significant = [w for w in title.split() if len(w) > 3 and w.lower() not in stop]
+        if artist and significant:
+            base_queries.append(f'{artist} {" ".join(significant[:3])}')
+        # Añadir versión sin paréntesis
+        simple_title = _re.sub(r'\s*\([^)]*\)', '', title).strip()
+        if simple_title != title and artist:
+            base_queries.append(f'{simple_title} {artist}')
+        seen = set(); queries = []
+        for q in base_queries:
+            if q.lower() not in seen:
+                queries.append(q); seen.add(q.lower())
         for query in queries:
-            tracks = self.search_tracks(query, limit=20)
+            tracks = self.search_tracks_with_locale(query, limit=30, force_latin=True)
             if tracks:
-                best = self.find_best_match(tracks, spotify_info)
+                best = self.find_best_match(tracks, {'name': title, 'artist': artist, 'duration': spotify_info.get('duration',0)})
                 if best:
                     return best
-            time.sleep(0.3)
+            time.sleep(0.25)
         return None
 
     def find_best_match(self, qobuz_tracks: List[Dict[str, Any]], spotify_info: Dict[str, Any]):

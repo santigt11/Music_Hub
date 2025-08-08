@@ -51,6 +51,24 @@ class SpotifyHandler:
                 response = requests.get(url, headers=HEADERS, timeout=15)
                 response.raise_for_status()
                 html = response.text
+                # Intento 1: Bloque JavaScript con Spotify.Entity que contiene JSON completo
+                try:
+                    entity_match = re.search(r'Spotify\\.Entity\\s*=\\s*({.*?});', html, re.DOTALL)
+                    if entity_match:
+                        raw_json = entity_match.group(1)
+                        entity = json.loads(raw_json)
+                        if entity.get('type') == 'track':
+                            title = entity.get('name', '')
+                            artists_list = entity.get('artists', []) or []
+                            artist = ''
+                            if artists_list and isinstance(artists_list, list):
+                                artist = artists_list[0].get('name', '')
+                            album = entity.get('album', {}).get('name', '') if isinstance(entity.get('album'), dict) else ''
+                            duration_ms = entity.get('duration_ms', 0)
+                            if title and artist:
+                                return {'name': title, 'artist': artist, 'album': album, 'duration': int(duration_ms/1000) if duration_ms else 0, 'artists': [a.get('name','') for a in artists_list if isinstance(a, dict)]}
+                except Exception:
+                    pass
                 json_ld_matches = re.finditer(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL)
                 for match in json_ld_matches:
                     try:
@@ -101,6 +119,28 @@ class SpotifyHandler:
                             artist = parts[0].strip(); title = parts[1].strip()
                     if title and artist != 'Unknown':
                         return {'name': title, 'artist': artist, 'album': album, 'duration': 0, 'artists': [artist]}
+                # Intento 3: oEmbed de Spotify (estable y ligero)
+                try:
+                    oembed_url = f"https://open.spotify.com/oembed?url=https://open.spotify.com/track/{track_id}"
+                    oresp = requests.get(oembed_url, headers=HEADERS, timeout=10)
+                    if oresp.status_code == 200:
+                        meta = oresp.json()
+                        # title suele venir como "Artist - Track" o "Track"
+                        t = meta.get('title', '').strip()
+                        o_title, o_artist = '', ''
+                        if ' - ' in t:
+                            parts = t.split(' - ', 1)
+                            if len(parts) == 2:
+                                o_artist, o_title = parts[0].strip(), parts[1].strip()
+                        else:
+                            o_title = t
+                        # author_name a veces contiene el artista
+                        if not o_artist:
+                            o_artist = (meta.get('author_name') or '').strip()
+                        if o_title and o_artist:
+                            return {'name': o_title, 'artist': o_artist, 'album': '', 'duration': 0, 'artists': [o_artist]}
+                except Exception:
+                    pass
             except Exception:
                 continue
         return None

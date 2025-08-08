@@ -172,15 +172,18 @@ async function performSearch() {
     
     try {
         console.log('Sending request to /api/search');
+        // Construir payload dinámicamente para incluir modo lyrics si aplica
+        const payload = { query: query, source: currentTab };
+        if (currentTab === 'qobuz' && searchType.isLyrics) {
+            payload.mode = 'lyrics';
+            console.log('Lyrics mode activado para la búsqueda');
+        }
         const response = await fetch('/api/search', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                query: query,
-                source: currentTab
-            })
+            body: JSON.stringify(payload)
         });
         
         console.log('Response status:', response.status);

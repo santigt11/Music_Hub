@@ -78,6 +78,23 @@ def search():
                                 'source': 'qobuz',
                                 'mapped_from_spotify': True
                             })
+                        else:
+                            # Fallback: buscar directamente usando título + artista si se obtuvo info
+                            artist = sp_info.get('artist','')
+                            title = sp_info.get('name','')
+                            simple_query = f"{title} {artist}".strip()
+                            if simple_query:
+                                for t in downloader.search_tracks_with_locale(simple_query, limit=10, force_latin=True):
+                                    results.append({
+                                        'id': t.get('id'),
+                                        'title': t.get('title'),
+                                        'artist': t.get('performer', {}).get('name','Unknown'),
+                                        'album': t.get('album', {}).get('title','Unknown'),
+                                        'duration': t.get('duration',0),
+                                        'cover': t.get('album', {}).get('image', {}).get('small',''),
+                                        'source': 'qobuz',
+                                        'spotify_fallback': True
+                                    })
             else:
                 tracks = downloader.search_tracks_with_locale(query, limit=15, force_latin=True)
                 for track in tracks:
