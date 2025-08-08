@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from flask import Flask, send_from_directory
+import logging
 from flask_cors import CORS
 from .services.qobuz import QobuzDownloader
 
@@ -47,7 +48,14 @@ def create_app() -> Flask:
     @app.route('/')
     def index():
         from flask import render_template
-        return render_template('index.html')
+        try:
+            return render_template('index.html')
+        except Exception as e:
+            logging.getLogger(__name__).exception("Error renderizando index.html")
+            # Fallback mínimo para no responder 500
+            return ('<html><head><title>Music Hub</title></head>'
+                    '<body><h1>Music Hub</h1><p>No se pudo cargar la interfaz.'
+                    ' Verifica que la carpeta templates esté desplegada.</p></body></html>', 200)
 
     @app.route('/favicon.ico')
     def favicon():
@@ -56,6 +64,13 @@ def create_app() -> Flask:
         if ico_path.exists():
             # send_from_directory necesita ruta absoluta y filename
             return send_from_directory(static_dir, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+        return ('', 204)
+
+    @app.route('/favicon.png')
+    def favicon_png():
+        png_path = static_dir / 'favicon.png'
+        if png_path.exists():
+            return send_from_directory(static_dir, 'favicon.png', mimetype='image/png')
         return ('', 204)
 
     _app = app
