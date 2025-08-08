@@ -308,6 +308,16 @@ class QobuzDownloader:
         except Exception:
             return text or ''
 
+    def _compact_spelled_acronyms(self, text: str) -> str:
+        """Une secuencias de letras sueltas (p o v -> pov) para mejorar coincidencias"""
+        try:
+            pattern = re.compile(r'(?:\b[a-z]\b\s+){1,5}\b[a-z]\b')
+            def repl(m: re.Match) -> str:
+                return m.group(0).replace(' ', '')
+            return pattern.sub(repl, text)
+        except Exception:
+            return text
+
     def _fetch_genius_lyrics(self, url: str) -> str:
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
@@ -328,6 +338,27 @@ class QobuzDownloader:
                 old = soup.select_one('div.lyrics')
                 if old:
                     parts.append(old.get_text(separator=' ', strip=True))
+            # Intentar obtener traducción (si existe) y anexarla, ayuda a frases en español
+            try:
+                trans_link = None
+                for a in soup.find_all('a', href=True):
+                    href = a['href']
+                    if '/translations/' in href or href.endswith('/translation'):
+                        trans_link = href
+                        break
+                if trans_link and not trans_link.startswith('http'):
+                    from urllib.parse import urljoin
+                    trans_link = urljoin(url, trans_link)
+                if trans_link:
+                    r2 = self.session.get(trans_link, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+                    if r2.status_code == 200:
+                        soup2 = BeautifulSoup(r2.text, 'html.parser')
+                        cont2 = soup2.find_all(attrs={'data-lyrics-container': 'true'})
+                        for c in cont2:
+                            for p in c.find_all('p'):
+                                parts.append(p.get_text(separator=' ', strip=True))
+            except Exception:
+                pass
             lyrics = '\n'.join(parts)
             return lyrics
         except Exception:
@@ -373,23 +404,33 @@ class QobuzDownloader:
         except Exception:
             return []
 
-    def search_by_lyrics(self, query: str, limit: int = 15) -> List[Dict[str, Any]]:
+    def search_by_lyrics(self, query: str, limit: int = 2) -> List[Dict[str, Any]]:
         try:
             # Normalizar el fragmento buscado (ignora tildes, puntuación, mayúsculas)
             normalized_phrase = self._normalize_text(query)
             if not normalized_phrase:
                 return []
             # Buscar candidatos en Genius
-            genius_songs = self.search_lyrics_genius(query, limit=min(limit, 8))
+            # Buscar algunos candidatos más, pero devolveremos hasta 'limit' verificados
+            genius_songs = self.search_lyrics_genius(query, limit=8)
             if not genius_songs:
                 return []
+            results: List[Dict[str, Any]] = []
             # Verificar letra real contenga el fragmento normalizado
             for song in genius_songs:
                 try:
                     url = song.get('url')
                     lyrics_raw = self._fetch_genius_lyrics(url) if url else ''
                     lyrics_norm = self._normalize_text(lyrics_raw)
-                    if lyrics_norm and normalized_phrase in lyrics_norm:
+                    if lyrics_norm:
+                        # Comprobar inclusión directa y con siglas compactadas
+                        np = normalized_phrase
+                        ln = lyrics_norm
+                        if np not in ln:
+                            np2 = self._compact_spelled_acronyms(np)
+                            ln2 = self._compact_spelled_acronyms(ln)
+                            if np2 not in ln2:
+                                continue
                         artist = song.get('artist') or ''
                         title = song.get('title') or ''
                         q_track = None
@@ -417,10 +458,12 @@ class QobuzDownloader:
                             q_track['genius_match'] = True
                             q_track['genius_url'] = url
                             q_track['matched_fragment'] = query
-                            return [q_track]  # Solo 1 resultado
+                            results.append(q_track)
+                            if len(results) >= limit:
+                                return results
                 except Exception:
                     continue
-            return []
+            return results
         except Exception:
             return []
 

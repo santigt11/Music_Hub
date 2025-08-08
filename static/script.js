@@ -117,15 +117,13 @@ function initializeModal() {
 
 // Detectar tipo de búsqueda y mostrar indicador
 function detectSearchType(query) {
-    const words = query.split();
-    const isLikelyLyrics = words.length >= 4 && !query.toLowerCase().includes('album') && 
-                          !query.toLowerCase().includes('artist') && 
-                          !query.toLowerCase().includes('song');
-    
-    return {
-        isLyrics: isLikelyLyrics,
-        wordCount: words.length
-    };
+    const cleaned = query
+        .replace(/[\p{P}\p{S}]+/gu, ' ') // quitar puntuación/símbolos
+        .trim();
+    const words = cleaned.length ? cleaned.split(/\s+/) : [];
+    const ql = query.toLowerCase();
+    const isLikelyLyrics = words.length >= 5 && !ql.includes('album') && !ql.includes('artist') && !ql.includes('song');
+    return { isLyrics: isLikelyLyrics, wordCount: words.length };
 }
 
 function updateSearchHint(query) {
