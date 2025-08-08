@@ -294,21 +294,38 @@ class QobuzDownloader:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
             url = "https://genius.com/api/search/multi"
             resp = self.session.get(url, params={'q': query}, headers=headers, timeout=10)
-            if resp.status_code != 200:
-                return []
-            data = resp.json()
             songs: List[Dict[str, Any]] = []
-            for section in data.get('response', {}).get('sections', []):
-                if section.get('type') == 'song':
-                    for hit in section.get('hits', []):
-                        res = hit.get('result', {})
-                        if res:
-                            songs.append({'title': res.get('title', ''), 'artist': res.get('primary_artist', {}).get('name', ''), 'url': res.get('url', ''), 'genius_id': res.get('id'), 'found_by_lyrics': True})
-                            if len(songs) >= limit:
-                                break
-                if len(songs) >= limit:
-                    break
-            return songs
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                    for section in data.get('response', {}).get('sections', []):
+                        if section.get('type') == 'song':
+                            for hit in section.get('hits', []):
+                                res = hit.get('result', {})
+                                if res:
+                                    songs.append({'title': res.get('title', ''), 'artist': res.get('primary_artist', {}).get('name', ''), 'url': res.get('url', ''), 'genius_id': res.get('id'), 'found_by_lyrics': True})
+                                    if len(songs) >= limit:
+                                        break
+                        if len(songs) >= limit:
+                            break
+                except Exception:
+                    pass
+            # Fallback adicional usando endpoint simple si no hay resultados
+            if not songs:
+                simple_url = "https://genius.com/api/search"
+                r2 = self.session.get(simple_url, params={'q': query}, headers=headers, timeout=10)
+                if r2.status_code == 200:
+                    try:
+                        data2 = r2.json()
+                        for hit in data2.get('response', {}).get('hits', []):
+                            res = hit.get('result', {})
+                            if res.get('type') == 'song' and res:
+                                songs.append({'title': res.get('title', ''), 'artist': res.get('primary_artist', {}).get('name', ''), 'url': res.get('url', ''), 'genius_id': res.get('id'), 'found_by_lyrics': True})
+                                if len(songs) >= limit:
+                                    break
+                    except Exception:
+                        pass
+            return songs[:limit]
         except Exception:
             return []
 
@@ -320,12 +337,33 @@ class QobuzDownloader:
             matches: List[Dict[str, Any]] = []
             for song in genius_songs:
                 try:
-                    artist = song.get('artist')
-                    title = song.get('title')
+                    artist = song.get('artist') or ''
+                    title = song.get('title') or ''
                     if not artist or not title:
                         continue
+                    # Primero intento de mapeo "inteligente" usando heurísticas existentes
                     sp_like = {'name': title, 'artist': artist, 'duration': 0}
                     q_track = self.search_track_from_spotify_info(sp_like)
+                    if not q_track:
+                        # Fallback directo: queries simples en Qobuz
+                        cand_queries = [
+                            f'"{title}" "{artist}"',
+                            f'{title} {artist}',
+                            f'{artist} {title}'
+                        ]
+                        simple_title = re.sub(r'\s*\([^)]*\)', '', title).strip()
+                        if simple_title != title:
+                            cand_queries.append(f'{simple_title} {artist}')
+                        seen_q = set()
+                        for q in cand_queries:
+                            if q.lower() in seen_q:
+                                continue
+                            seen_q.add(q.lower())
+                            trks = self.search_tracks_with_locale(q, limit=10, force_latin=True)
+                            # Elegir primer candidato razonable
+                            if trks:
+                                q_track = trks[0]
+                                break
                     if q_track:
                         q_track['found_by_lyrics'] = True
                         q_track['genius_match'] = True
@@ -334,7 +372,7 @@ class QobuzDownloader:
                         matches.append(q_track)
                         if len(matches) >= limit:
                             break
-                    time.sleep(0.3)
+                    time.sleep(0.25)
                 except Exception:
                     continue
             return matches
