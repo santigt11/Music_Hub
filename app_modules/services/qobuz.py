@@ -5,6 +5,8 @@ import hashlib
 import re
 import json
 from typing import List, Dict, Any, Optional
+import unicodedata
+from bs4 import BeautifulSoup
 import requests
 from .spotify import SpotifyHandler
 from ..config import QOBUZ_TOKEN
@@ -289,6 +291,48 @@ class QobuzDownloader:
             return False
 
     # --- Lyrics (Genius) ---
+    def _normalize_text(self, text: str) -> str:
+        try:
+            if not text:
+                return ''
+            # Quitar tildes/diacríticos
+            text = unicodedata.normalize('NFKD', text)
+            text = ''.join(c for c in text if not unicodedata.combining(c))
+            # Lowercase
+            text = text.lower()
+            # Quitar puntuación
+            text = re.sub(r'[^a-z0-9\s]', ' ', text)
+            # Colapsar espacios
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text
+        except Exception:
+            return text or ''
+
+    def _fetch_genius_lyrics(self, url: str) -> str:
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            r = self.session.get(url, headers=headers, timeout=12)
+            if r.status_code != 200:
+                return ''
+            html = r.text
+            soup = BeautifulSoup(html, 'html.parser')
+            # Estructura moderna: contenedores con data-lyrics-container="true"
+            containers = soup.find_all(attrs={'data-lyrics-container': 'true'})
+            parts: List[str] = []
+            for c in containers:
+                # Cada contenedor tiene múltiples <p> con fragmentos
+                for p in c.find_all('p'):
+                    parts.append(p.get_text(separator=' ', strip=True))
+            if not parts:
+                # Fallback antiguo: div.lyrics
+                old = soup.select_one('div.lyrics')
+                if old:
+                    parts.append(old.get_text(separator=' ', strip=True))
+            lyrics = '\n'.join(parts)
+            return lyrics
+        except Exception:
+            return ''
+
     def search_lyrics_genius(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
@@ -331,51 +375,52 @@ class QobuzDownloader:
 
     def search_by_lyrics(self, query: str, limit: int = 15) -> List[Dict[str, Any]]:
         try:
-            genius_songs = self.search_lyrics_genius(query, limit=min(limit,10))
+            # Normalizar el fragmento buscado (ignora tildes, puntuación, mayúsculas)
+            normalized_phrase = self._normalize_text(query)
+            if not normalized_phrase:
+                return []
+            # Buscar candidatos en Genius
+            genius_songs = self.search_lyrics_genius(query, limit=min(limit, 8))
             if not genius_songs:
                 return []
-            matches: List[Dict[str, Any]] = []
+            # Verificar letra real contenga el fragmento normalizado
             for song in genius_songs:
                 try:
-                    artist = song.get('artist') or ''
-                    title = song.get('title') or ''
-                    if not artist or not title:
-                        continue
-                    # Primero intento de mapeo "inteligente" usando heurísticas existentes
-                    sp_like = {'name': title, 'artist': artist, 'duration': 0}
-                    q_track = self.search_track_from_spotify_info(sp_like)
-                    if not q_track:
-                        # Fallback directo: queries simples en Qobuz
-                        cand_queries = [
-                            f'"{title}" "{artist}"',
-                            f'{title} {artist}',
-                            f'{artist} {title}'
-                        ]
-                        simple_title = re.sub(r'\s*\([^)]*\)', '', title).strip()
-                        if simple_title != title:
-                            cand_queries.append(f'{simple_title} {artist}')
-                        seen_q = set()
-                        for q in cand_queries:
-                            if q.lower() in seen_q:
-                                continue
-                            seen_q.add(q.lower())
-                            trks = self.search_tracks_with_locale(q, limit=10, force_latin=True)
-                            # Elegir primer candidato razonable
-                            if trks:
-                                q_track = trks[0]
-                                break
-                    if q_track:
-                        q_track['found_by_lyrics'] = True
-                        q_track['genius_match'] = True
-                        q_track['genius_url'] = song.get('url')
-                        q_track['matched_fragment'] = query
-                        matches.append(q_track)
-                        if len(matches) >= limit:
-                            break
-                    time.sleep(0.25)
+                    url = song.get('url')
+                    lyrics_raw = self._fetch_genius_lyrics(url) if url else ''
+                    lyrics_norm = self._normalize_text(lyrics_raw)
+                    if lyrics_norm and normalized_phrase in lyrics_norm:
+                        artist = song.get('artist') or ''
+                        title = song.get('title') or ''
+                        q_track = None
+                        if artist and title:
+                            # Intento de mapeo a Qobuz
+                            sp_like = {'name': title, 'artist': artist, 'duration': 0}
+                            q_track = self.search_track_from_spotify_info(sp_like)
+                            if not q_track:
+                                # Fallback directo: queries simples en Qobuz
+                                cand_queries = [
+                                    f'"{title}" "{artist}"',
+                                    f'{title} {artist}',
+                                    f'{artist} {title}'
+                                ]
+                                simple_title = re.sub(r'\s*\([^)]*\)', '', title).strip()
+                                if simple_title != title:
+                                    cand_queries.append(f'{simple_title} {artist}')
+                                for q in cand_queries:
+                                    trks = self.search_tracks_with_locale(q, limit=10, force_latin=True)
+                                    if trks:
+                                        q_track = trks[0]
+                                        break
+                        if q_track:
+                            q_track['found_by_lyrics'] = True
+                            q_track['genius_match'] = True
+                            q_track['genius_url'] = url
+                            q_track['matched_fragment'] = query
+                            return [q_track]  # Solo 1 resultado
                 except Exception:
                     continue
-            return matches
+            return []
         except Exception:
             return []
 
