@@ -37,6 +37,15 @@ body {
     line-height: 1.6;
     overflow-x: hidden;
     min-height: 100vh;
+    /* Mejoras para Android */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
 /* Container */
@@ -1050,6 +1059,14 @@ button:disabled:hover {
         padding: 12px 20px;
         min-width: 110px;
         font-size: 0.9rem;
+        /* Mejoras táctiles para Android */
+        -webkit-tap-highlight-color: rgba(139, 115, 85, 0.3);
+        touch-action: manipulation;
+    }
+    
+    .tab-btn:active {
+        transform: scale(0.96);
+        background: var(--primary-dark);
     }
     
     /* Mejorar tarjetas de resultados para móvil */
@@ -1087,20 +1104,31 @@ button:disabled:hover {
     .result-actions {
         flex-direction: row;
         width: 100%;
-        gap: 8px;
+        gap: 12px;
         justify-content: center;
+        align-items: center;
+        display: flex;
     }
     
     .preview-btn {
         flex: 1;
-        max-width: 100px;
-        padding: 10px 8px;
-        font-size: 0.8rem;
+        max-width: 140px;
+        padding: 12px 16px;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
     }
     
     .download-btn {
         flex: 1;
-        max-width: 120px;
+        max-width: 140px;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
         justify-content: center;
         padding: 10px 12px;
     }
@@ -1155,6 +1183,9 @@ button:disabled:hover {
         display: flex;
         align-items: center;
         justify-content: center;
+        /* Mejoras táctiles para Android */
+        -webkit-tap-highlight-color: rgba(139, 115, 85, 0.3);
+        touch-action: manipulation;
     }
     
     .search-btn:active {
@@ -1477,9 +1508,9 @@ body {
 /* Estilos para el botón de preview y actions */
 .result-actions {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: center;
     flex-wrap: wrap;
     flex-shrink: 0;
 }
@@ -1731,5 +1762,141 @@ body {
         width: 32px;
         height: 32px;
         font-size: 0.9rem;
+    }
+}
+
+/* Mejoras específicas para Android y dispositivos táctiles */
+@media (max-width: 480px) and (hover: none) and (pointer: coarse) {
+    /* Aumentar el tamaño de elementos táctiles */
+    .tab-btn {
+        min-height: 48px;
+        padding: 14px 24px;
+        font-size: 1rem;
+        font-weight: 500;
+    }
+    
+    .search-btn {
+        min-height: 56px;
+        padding: 16px 24px;
+        font-size: 1.1rem;
+        border-radius: 12px;
+    }
+    
+    .search-input, .search-textarea {
+        min-height: 56px;
+        padding: 16px 20px;
+        font-size: 1rem;
+        border-radius: 12px;
+        line-height: 1.4;
+    }
+    
+    .search-textarea {
+        min-height: 100px;
+        resize: vertical;
+    }
+    
+    /* Mejorar botones de acción */
+    .preview-btn, .download-btn {
+        min-height: 48px;
+        padding: 12px 16px;
+        font-size: 0.95rem;
+        border-radius: 10px;
+        font-weight: 500;
+        transition: var(--transition-fast);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        flex: 1;
+        max-width: 160px;
+    }
+    
+    .preview-btn:active, .download-btn:active {
+        transform: scale(0.95);
+    }
+    
+    /* Contenedor de acciones mejorado */
+    .result-actions {
+        display: flex;
+        flex-direction: row;
+        width: 100%;
+        gap: 12px;
+        justify-content: center;
+        align-items: center;
+        margin-top: 12px;
+    }
+    
+    /* Mejorar tarjetas de resultados */
+    .result-item {
+        padding: 20px 16px;
+        border-radius: 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+    
+    .result-item:active {
+        transform: scale(0.98);
+    }
+    
+    .result-cover {
+        width: 100px;
+        height: 100px;
+        border-radius: 12px;
+    }
+    
+    .result-title {
+        font-size: 1.3rem;
+        font-weight: 600;
+        margin-bottom: 6px;
+    }
+    
+    .result-artist {
+        font-size: 1.05rem;
+        margin-bottom: 4px;
+    }
+    
+    .result-album, .result-duration {
+        font-size: 0.95rem;
+    }
+    
+    /* Mejorar espaciado y legibilidad */
+    .container {
+        padding: 12px;
+    }
+    
+    .logo h1 {
+        font-size: 2.2rem;
+        margin-bottom: 8px;
+    }
+    
+    .logo p {
+        font-size: 1rem;
+    }
+    
+    /* Scroll suave para Android */
+    * {
+        -webkit-overflow-scrolling: touch;
+        scroll-behavior: smooth;
+    }
+    
+    /* Área de toque más grande para elementos interactivos */
+    .lyrics-indicator {
+        padding: 8px;
+        margin: 0 4px;
+    }
+    
+    /* Mejorar visualización de cargas */
+    .loading-spinner {
+        width: 50px;
+        height: 50px;
+        margin: 20px auto;
+    }
+    
+    /* Asegurar que el texto sea seleccionable en inputs */
+    input, textarea {
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
     }
 }

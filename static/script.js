@@ -216,7 +216,6 @@ function displayResults(results) {
     }
     
     // Contar resultados por tipo
-    const geniusResults = results.filter(r => r.genius_match);
     const lyricsResults = results.filter(r => r.found_by_lyrics);
     const normalResults = results.filter(r => !r.found_by_lyrics);
     
@@ -224,10 +223,8 @@ function displayResults(results) {
     resultsHeader.classList.remove('hidden');
     let countText = `${results.length} resultado${results.length !== 1 ? 's' : ''}`;
     
-    if (geniusResults.length > 0) {
-        countText += ` (${geniusResults.length} de Genius con letra confirmada)`;
-    } else if (lyricsResults.length > 0) {
-        countText += ` (${lyricsResults.length} por letra)`;
+    if (lyricsResults.length > 0) {
+        countText += ` (${lyricsResults.length} encontrado${lyricsResults.length !== 1 ? 's' : ''} por letra)`;
     }
     
     resultsCount.textContent = countText;
@@ -241,11 +238,9 @@ function displayResults(results) {
         // Indicador visual para resultados obtenidos por letra
         let lyricsIndicator = '';
         if (result.found_by_lyrics) {
-            const cls = result.genius_match ? 'lyrics-indicator genius' : 'lyrics-indicator';
-            lyricsIndicator = `<span class="${cls}" title="Encontrado por letra">🎤⭐</span>`;
+            lyricsIndicator = `<span class="lyrics-indicator" title="Encontrado por letra">🎤⭐</span>`;
         }
         const isGeniusOnly = (!result.id) || result.source === 'genius';
-        const geniusLink = result.genius_url ? `<a class="genius-link" href="${escapeHtml(result.genius_url)}" target="_blank" rel="noopener">Ver en Genius</a>` : '';
             
         return `
             <div class="result-item" data-index="${index}">
@@ -260,15 +255,14 @@ function displayResults(results) {
                     <div class="result-artist">${escapeHtml(result.artist)}</div>
                     ${result.album ? `<div class="result-album">${escapeHtml(result.album)}</div>` : ''}
                     ${result.duration ? `<div class="result-duration">${formatDuration(result.duration)}</div>` : ''}
-                    ${isGeniusOnly && geniusLink ? `<div class="result-genius">${geniusLink}</div>` : ''}
                 </div>
                 <div class="result-actions">
                     ${isGeniusOnly ? `
-                        <button class="preview-btn" style="opacity:.5;pointer-events:none" title="No disponible para resultados solo de Genius">
+                        <button class="preview-btn" style="opacity:.5;pointer-events:none" title="No disponible para este resultado">
                             <span class="preview-icon">▶</span>
                             <span class="preview-text">Preview</span>
                         </button>
-                        <button class="download-btn" style="opacity:.5;pointer-events:none" title="No disponible para resultados solo de Genius">
+                        <button class="download-btn" style="opacity:.5;pointer-events:none" title="No disponible para este resultado">
                             <span class="download-icon">⬇</span>
                             Descargar
                         </button>

@@ -41,6 +41,37 @@ class SpotifyHandler:
             return None, None
 
     def get_track_info_by_scraping(self, track_id: str) -> Optional[Dict[str, Any]]:
+        # Intento 1: __NEXT_DATA__ JSON del embed (MÁS CONFIABLE)
+        try:
+            embed_url = f"https://open.spotify.com/embed/track/{track_id}"
+            embed_response = requests.get(embed_url, headers=HEADERS, timeout=15)
+            if embed_response.status_code == 200:
+                embed_html = embed_response.text
+                next_data_match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', embed_html)
+                if next_data_match:
+                    next_data = json.loads(next_data_match.group(1))
+                    entity = next_data.get('props', {}).get('pageProps', {}).get('state', {}).get('data', {}).get('entity', {})
+                    if entity.get('type') == 'track':
+                        title = entity.get('name', '')
+                        artists_list = entity.get('artists', [])
+                        if artists_list and isinstance(artists_list, list):
+                            artist = artists_list[0].get('name', '')
+                            all_artists = [a.get('name', '') for a in artists_list if a.get('name')]
+                            duration_ms = entity.get('duration', 0)
+                            if title and artist:
+                                print(f"[SPOTIFY] ✅ Found via embed: '{title}' by '{artist}'")
+                                return {
+                                    'name': title, 
+                                    'artist': artist, 
+                                    'album': '', 
+                                    'duration': int(duration_ms/1000) if duration_ms else 0, 
+                                    'artists': all_artists
+                                }
+        except Exception as e:
+            print(f"[SPOTIFY] ❌ Embed parsing failed: {e}")
+            pass
+
+        # Fallback: Métodos anteriores
         urls = [
             f"https://open.spotify.com/track/{track_id}",
             f"https://open.spotify.com/intl-es/track/{track_id}",
@@ -51,7 +82,7 @@ class SpotifyHandler:
                 response = requests.get(url, headers=HEADERS, timeout=15)
                 response.raise_for_status()
                 html = response.text
-                # Intento 1: Bloque JavaScript con Spotify.Entity que contiene JSON completo
+                # Intento 2: Bloque JavaScript con Spotify.Entity que contiene JSON completo
                 try:
                     entity_match = re.search(r'Spotify\\.Entity\\s*=\\s*({.*?});', html, re.DOTALL)
                     if entity_match:
@@ -119,7 +150,37 @@ class SpotifyHandler:
                             artist = parts[0].strip(); title = parts[1].strip()
                     if title and artist != 'Unknown':
                         return {'name': title, 'artist': artist, 'album': album, 'duration': 0, 'artists': [artist]}
-                # Intento 3: oEmbed de Spotify (estable y ligero)
+                # Intento 3: __NEXT_DATA__ JSON del embed (más confiable)
+                try:
+                    embed_url = f"https://open.spotify.com/embed/track/{track_id}"
+                    embed_response = requests.get(embed_url, headers=HEADERS, timeout=15)
+                    if embed_response.status_code == 200:
+                        embed_html = embed_response.text
+                        next_data_match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', embed_html)
+                        if next_data_match:
+                            next_data = json.loads(next_data_match.group(1))
+                            entity = next_data.get('props', {}).get('pageProps', {}).get('state', {}).get('data', {}).get('entity', {})
+                            if entity.get('type') == 'track':
+                                title = entity.get('name', '')
+                                artists_list = entity.get('artists', [])
+                                if artists_list and isinstance(artists_list, list):
+                                    artist = artists_list[0].get('name', '')
+                                    all_artists = [a.get('name', '') for a in artists_list if a.get('name')]
+                                    duration_ms = entity.get('duration', 0)
+                                    if title and artist:
+                                        print(f"[SPOTIFY] ✅ Found via embed: '{title}' by '{artist}'")
+                                        return {
+                                            'name': title, 
+                                            'artist': artist, 
+                                            'album': '', 
+                                            'duration': int(duration_ms/1000) if duration_ms else 0, 
+                                            'artists': all_artists
+                                        }
+                except Exception as e:
+                    print(f"[SPOTIFY] ❌ Embed parsing failed: {e}")
+                    pass
+                
+                # Intento 4: oEmbed de Spotify (estable y ligero)
                 try:
                     oembed_url = f"https://open.spotify.com/oembed?url=https://open.spotify.com/track/{track_id}"
                     oresp = requests.get(oembed_url, headers=HEADERS, timeout=10)
