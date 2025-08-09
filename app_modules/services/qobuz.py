@@ -291,7 +291,8 @@ class QobuzDownloader:
             return False
 
     # --- Lyrics (Genius) ---
-    def _normalize_text(self, text: str) -> str:
+    def _clean_lyrics_text(self, text: str) -> str:
+        """Limpia texto removiendo símbolos, tildes y normalizando espacios"""
         try:
             if not text:
                 return ''
@@ -300,171 +301,447 @@ class QobuzDownloader:
             text = ''.join(c for c in text if not unicodedata.combining(c))
             # Lowercase
             text = text.lower()
-            # Quitar puntuación
+            # Quitar TODO excepto letras, números y espacios
             text = re.sub(r'[^a-z0-9\s]', ' ', text)
-            # Colapsar espacios
+            # Colapsar múltiples espacios en uno
             text = re.sub(r'\s+', ' ', text).strip()
             return text
         except Exception:
             return text or ''
 
-    def _compact_spelled_acronyms(self, text: str) -> str:
-        """Une secuencias de letras sueltas (p o v -> pov) para mejorar coincidencias"""
-        try:
-            pattern = re.compile(r'(?:\b[a-z]\b\s+){1,5}\b[a-z]\b')
-            def repl(m: re.Match) -> str:
-                return m.group(0).replace(' ', '')
-            return pattern.sub(repl, text)
-        except Exception:
-            return text
-
     def _fetch_genius_lyrics(self, url: str) -> str:
+        """Obtiene la letra completa de una página de Genius"""
         try:
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            r = self.session.get(url, headers=headers, timeout=12)
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Connection': 'keep-alive'
+            }
+            
+            print(f"[FETCH] Descargando letras de: {url}")
+            
+            r = self.session.get(url, headers=headers, timeout=15)
             if r.status_code != 200:
+                print(f"[FETCH] Error HTTP {r.status_code}")
                 return ''
+            
             html = r.text
             soup = BeautifulSoup(html, 'html.parser')
-            # Estructura moderna: contenedores con data-lyrics-container="true"
-            containers = soup.find_all(attrs={'data-lyrics-container': 'true'})
+            
             parts: List[str] = []
-            for c in containers:
-                # Cada contenedor tiene múltiples <p> con fragmentos
-                for p in c.find_all('p'):
-                    parts.append(p.get_text(separator=' ', strip=True))
+            
+            # Método 1: Contenedores modernos con data-lyrics-container="true"
+            containers = soup.find_all(attrs={'data-lyrics-container': 'true'})
+            if containers:
+                print(f"[FETCH] Encontrados {len(containers)} contenedores modernos")
+                for container in containers:
+                    # Preservar saltos de línea
+                    for br in container.find_all('br'):
+                        br.replace_with('\n')
+                    
+                    text = container.get_text(separator='\n', strip=True)
+                    if text:
+                        parts.append(text)
+            
+            # Método 2: Contenedores con clase específica de letras
             if not parts:
-                # Fallback antiguo: div.lyrics
-                old = soup.select_one('div.lyrics')
-                if old:
-                    parts.append(old.get_text(separator=' ', strip=True))
-            # Intentar obtener traducción (si existe) y anexarla, ayuda a frases en español
-            try:
-                trans_link = None
-                for a in soup.find_all('a', href=True):
-                    href = a['href']
-                    if '/translations/' in href or href.endswith('/translation'):
-                        trans_link = href
+                lyrics_divs = soup.find_all('div', class_=re.compile(r'.*[Ll]yrics.*'))
+                if lyrics_divs:
+                    print(f"[FETCH] Encontrados {len(lyrics_divs)} divs de letras por clase")
+                    for div in lyrics_divs:
+                        for br in div.find_all('br'):
+                            br.replace_with('\n')
+                        text = div.get_text(separator='\n', strip=True)
+                        if text and len(text) > 50:  # Solo textos sustanciales
+                            parts.append(text)
+            
+            # Método 3: Fallback - buscar divs con mucho texto
+            if not parts:
+                all_divs = soup.find_all('div')
+                print(f"[FETCH] Fallback: analizando {len(all_divs)} divs")
+                for div in all_divs:
+                    text = div.get_text(strip=True)
+                    # Si el div tiene mucho texto y parece contener letras
+                    if len(text) > 200 and '\n' in text and not div.find('script'):
+                        for br in div.find_all('br'):
+                            br.replace_with('\n')
+                        clean_text = div.get_text(separator='\n', strip=True)
+                        parts.append(clean_text)
                         break
-                if trans_link and not trans_link.startswith('http'):
-                    from urllib.parse import urljoin
-                    trans_link = urljoin(url, trans_link)
-                if trans_link:
-                    r2 = self.session.get(trans_link, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-                    if r2.status_code == 200:
-                        soup2 = BeautifulSoup(r2.text, 'html.parser')
-                        cont2 = soup2.find_all(attrs={'data-lyrics-container': 'true'})
-                        for c in cont2:
-                            for p in c.find_all('p'):
-                                parts.append(p.get_text(separator=' ', strip=True))
-            except Exception:
-                pass
-            lyrics = '\n'.join(parts)
-            return lyrics
-        except Exception:
+            
+            if parts:
+                lyrics = '\n'.join(parts)
+                print(f"[FETCH] Letras extraídas: {len(lyrics)} caracteres")
+                return lyrics
+            else:
+                print("[FETCH] No se encontraron letras")
+                return ''
+                
+        except Exception as e:
+            print(f"[FETCH] Error obteniendo letras de {url}: {e}")
             return ''
 
     def search_lyrics_genius(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Busca canciones en Genius usando múltiples métodos"""
         try:
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            url = "https://genius.com/api/search/multi"
-            resp = self.session.get(url, params={'q': query}, headers=headers, timeout=10)
-            songs: List[Dict[str, Any]] = []
-            if resp.status_code == 200:
+            print(f"[GENIUS] Iniciando búsqueda: '{query[:50]}...'")
+            
+            # Método 1: Intentar API oficial de Genius si está disponible
+            songs = self._try_genius_api(query, limit)
+            if songs:
+                print(f"[GENIUS] API exitosa: {len(songs)} resultados")
+                return songs
+            
+            # Método 2: Scraping web como fallback
+            songs = self._try_genius_scraping(query, limit)
+            if songs:
+                print(f"[GENIUS] Scraping exitoso: {len(songs)} resultados")
+                return songs
+            
+            print("[GENIUS] No se encontraron resultados")
+            return []
+            
+        except Exception as e:
+            print(f"[GENIUS] Error general: {e}")
+            return []
+    
+    def _try_genius_api(self, query: str, limit: int) -> List[Dict[str, Any]]:
+        """Intenta usar la API oficial de Genius con token"""
+        try:
+            import urllib.parse
+            
+            # Token oficial del API de Genius
+            genius_token = "bOb0AM7TteQJ9J2t1JjQtHfSw2qlhp_U5oyFRenLmshiQw0jgrowXLyurdbda6Rt"
+            
+            headers = {
+                'Authorization': f'Bearer {genius_token}',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'application/json'
+            }
+            
+            # Usar la API oficial de búsqueda
+            encoded_query = urllib.parse.quote(query)
+            api_url = f"https://api.genius.com/search?q={encoded_query}"
+            
+            print(f"[GENIUS API] Buscando en: {api_url}")
+            
+            resp = self.session.get(api_url, headers=headers, timeout=15)
+            if resp.status_code != 200:
+                print(f"[GENIUS API] Error HTTP: {resp.status_code}")
+                return []
+            
+            data = resp.json()
+            
+            if 'response' not in data or 'hits' not in data['response']:
+                print("[GENIUS API] Estructura de respuesta inesperada")
+                return []
+            
+            hits = data['response']['hits']
+            print(f"[GENIUS API] Encontrados {len(hits)} hits")
+            
+            songs = []
+            for hit in hits[:limit]:
                 try:
-                    data = resp.json()
-                    for section in data.get('response', {}).get('sections', []):
-                        if section.get('type') == 'song':
-                            for hit in section.get('hits', []):
-                                res = hit.get('result', {})
-                                if res:
-                                    songs.append({'title': res.get('title', ''), 'artist': res.get('primary_artist', {}).get('name', ''), 'url': res.get('url', ''), 'genius_id': res.get('id'), 'found_by_lyrics': True})
-                                    if len(songs) >= limit:
-                                        break
+                    result = hit.get('result', {})
+                    
+                    title = result.get('title', '')
+                    artist_info = result.get('primary_artist', {})
+                    artist = artist_info.get('name', 'Unknown') if artist_info else 'Unknown'
+                    url = result.get('url', '')
+                    genius_id = result.get('id', '')
+                    
+                    if title and url:
+                        song_data = {
+                            'title': title,
+                            'artist': artist,
+                            'url': url,
+                            'genius_id': str(genius_id),
+                            'found_by_lyrics': True
+                        }
+                        songs.append(song_data)
+                        print(f"[GENIUS API] ✓ {title} - {artist}")
+                
+                except Exception as e:
+                    print(f"[GENIUS API] Error procesando hit: {e}")
+                    continue
+            
+            return songs
+                
+        except Exception as e:
+            print(f"[GENIUS API] Error general: {e}")
+            return []
+    
+    def _try_genius_scraping(self, query: str, limit: int) -> List[Dict[str, Any]]:
+        """Scraping como fallback"""
+        try:
+            import urllib.parse
+            
+            # Usar palabras clave si la query es muy larga
+            words = query.split()
+            if len(words) > 10:
+                key_words = [w for w in words if len(w) > 3][:5]
+                search_query = ' '.join(key_words)
+            else:
+                search_query = query
+            
+            print(f"[GENIUS SCRAPING] Buscando: '{search_query}'")
+            
+            url = f"https://genius.com/search?q={urllib.parse.quote_plus(search_query)}"
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            
+            resp = self.session.get(url, headers=headers, timeout=15)
+            if resp.status_code != 200:
+                return []
+            
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            songs = []
+            
+            # Buscar enlaces de canciones
+            for link in soup.find_all('a', href=True):
+                href = link.get('href', '')
+                if 'lyrics' in href and not href.startswith('#'):
+                    title = link.get_text(strip=True)
+                    
+                    if not href.startswith('http'):
+                        href = f"https://genius.com{href}"
+                    
+                    if title and len(title) > 2:
+                        songs.append({
+                            'title': title,
+                            'artist': 'Unknown',
+                            'url': href,
+                            'genius_id': href.split('/')[-1],
+                            'found_by_lyrics': True
+                        })
+                        
                         if len(songs) >= limit:
                             break
-                except Exception:
-                    pass
-            # Fallback adicional usando endpoint simple si no hay resultados
-            if not songs:
-                simple_url = "https://genius.com/api/search"
-                r2 = self.session.get(simple_url, params={'q': query}, headers=headers, timeout=10)
-                if r2.status_code == 200:
-                    try:
-                        data2 = r2.json()
-                        for hit in data2.get('response', {}).get('hits', []):
-                            res = hit.get('result', {})
-                            if res.get('type') == 'song' and res:
-                                songs.append({'title': res.get('title', ''), 'artist': res.get('primary_artist', {}).get('name', ''), 'url': res.get('url', ''), 'genius_id': res.get('id'), 'found_by_lyrics': True})
-                                if len(songs) >= limit:
-                                    break
-                    except Exception:
-                        pass
-            return songs[:limit]
-        except Exception:
+            
+            return songs
+            
+        except Exception as e:
+            print(f"[GENIUS SCRAPING] Error: {e}")
             return []
 
-    def search_by_lyrics(self, query: str, limit: int = 2) -> List[Dict[str, Any]]:
+    def search_by_lyrics(self, query: str, limit: int = 1) -> List[Dict[str, Any]]:
+        """Busca canciones por fragmento de letra usando estrategia híbrida"""
         try:
-            # Normalizar el fragmento buscado (ignora tildes, puntuación, mayúsculas)
-            normalized_phrase = self._normalize_text(query)
-            if not normalized_phrase:
+            print(f"[LYRICS] Buscando: '{query}'")
+            
+            # Limpiar la consulta
+            clean_query = self._clean_lyrics_text(query)
+            if len(clean_query.split()) < 3:
                 return []
-            # Buscar candidatos en Genius
-            # Buscar algunos candidatos más, pero devolveremos hasta 'limit' verificados
-            genius_songs = self.search_lyrics_genius(query, limit=8)
-            if not genius_songs:
-                return []
-            results: List[Dict[str, Any]] = []
-            # Verificar letra real contenga el fragmento normalizado
-            for song in genius_songs:
+            
+            results = []
+            
+            # Estrategia 1: Intentar búsqueda real en Genius
+            print("[LYRICS] Intentando búsqueda en Genius...")
+            genius_results = self._search_genius_for_lyrics(clean_query, limit)
+            results.extend(genius_results)
+            
+            # Estrategia 2: Si Genius no funciona, buscar por palabras clave en Qobuz
+            if len(results) < limit:
+                print("[LYRICS] Buscando por palabras clave en Qobuz...")
+                keyword_results = self._search_by_keywords(clean_query, limit - len(results))
+                results.extend(keyword_results)
+            
+            # Marcar todos los resultados como encontrados por letra
+            for result in results:
+                result['found_by_lyrics'] = True
+                result['lyrics_fragment'] = query[:100]
+            
+            print(f"[LYRICS] Retornando {len(results)} resultados")
+            return results[:limit]
+            
+        except Exception as e:
+            print(f"[LYRICS] Error en search_by_lyrics: {e}")
+            return []
+    
+    def _search_genius_for_lyrics(self, clean_query: str, limit: int) -> List[Dict[str, Any]]:
+        """Búsqueda real en Genius con verificación de letras usando API oficial"""
+        try:
+            # Buscar candidatos en Genius usando API oficial
+            candidates = self._search_genius_api(clean_query, limit=10)
+            
+            results = []
+            for candidate in candidates[:5]:  # Solo verificar los primeros 5
                 try:
-                    url = song.get('url')
-                    lyrics_raw = self._fetch_genius_lyrics(url) if url else ''
-                    lyrics_norm = self._normalize_text(lyrics_raw)
-                    if lyrics_norm:
-                        # Comprobar inclusión directa y con siglas compactadas
-                        np = normalized_phrase
-                        ln = lyrics_norm
-                        if np not in ln:
-                            np2 = self._compact_spelled_acronyms(np)
-                            ln2 = self._compact_spelled_acronyms(ln)
-                            if np2 not in ln2:
-                                continue
-                        artist = song.get('artist') or ''
-                        title = song.get('title') or ''
-                        q_track = None
-                        if artist and title:
-                            # Intento de mapeo a Qobuz
-                            sp_like = {'name': title, 'artist': artist, 'duration': 0}
-                            q_track = self.search_track_from_spotify_info(sp_like)
-                            if not q_track:
-                                # Fallback directo: queries simples en Qobuz
-                                cand_queries = [
-                                    f'"{title}" "{artist}"',
-                                    f'{title} {artist}',
-                                    f'{artist} {title}'
-                                ]
-                                simple_title = re.sub(r'\s*\([^)]*\)', '', title).strip()
-                                if simple_title != title:
-                                    cand_queries.append(f'{simple_title} {artist}')
-                                for q in cand_queries:
-                                    trks = self.search_tracks_with_locale(q, limit=10, force_latin=True)
-                                    if trks:
-                                        q_track = trks[0]
-                                        break
-                        if q_track:
-                            q_track['found_by_lyrics'] = True
-                            q_track['genius_match'] = True
-                            q_track['genius_url'] = url
-                            q_track['matched_fragment'] = query
-                            results.append(q_track)
+                    # Descargar letras
+                    lyrics = self._fetch_genius_lyrics(candidate['url'])
+                    if not lyrics:
+                        continue
+                    
+                    # Verificar coincidencia
+                    clean_lyrics = self._clean_lyrics_text(lyrics)
+                    if clean_query in clean_lyrics:
+                        print(f"[LYRICS] ¡Coincidencia encontrada en: {candidate['title']}!")
+                        
+                        # Buscar en Qobuz
+                        qobuz_query = f"{candidate['title']} {candidate['artist']}"
+                        qobuz_results = self.search_with_similarity(qobuz_query, limit=2)
+                        
+                        for track in qobuz_results:
+                            results.append(track.copy())
                             if len(results) >= limit:
-                                return results
-                except Exception:
+                                break
+                        
+                        if len(results) >= limit:
+                            break
+                
+                except Exception as e:
+                    print(f"[LYRICS] Error verificando {candidate.get('title')}: {e}")
                     continue
+            
             return results
-        except Exception:
+            
+        except Exception as e:
+            print(f"[LYRICS] Error en búsqueda Genius: {e}")
+            return []
+
+    def _search_genius_api(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Busca canciones usando el API oficial de Genius"""
+        try:
+            import urllib.parse
+            
+            # Tu token de Genius
+            genius_token = "bOb0AM7TteQJ9J2t1JjQtHfSw2qlhp_U5oyFRenLmshiQw0jgrowXLyurdbda6Rt"
+            
+            headers = {
+                'Authorization': f'Bearer {genius_token}',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            
+            # Codificar la query
+            encoded_query = urllib.parse.quote(query)
+            api_url = f"https://api.genius.com/search?q={encoded_query}"
+            
+            print(f"[GENIUS API] Buscando: {api_url}")
+            
+            response = self.session.get(api_url, headers=headers, timeout=10)
+            
+            if response.status_code != 200:
+                print(f"[GENIUS API] Error {response.status_code}: {response.text}")
+                return []
+            
+            data = response.json()
+            
+            if 'response' not in data or 'hits' not in data['response']:
+                print("[GENIUS API] Formato de respuesta inesperado")
+                return []
+            
+            hits = data['response']['hits']
+            songs = []
+            
+            for hit in hits[:limit]:
+                try:
+                    result = hit.get('result', {})
+                    
+                    title = result.get('title', 'Unknown')
+                    artist = result.get('primary_artist', {}).get('name', 'Unknown')
+                    url = result.get('url', '')
+                    
+                    if title and url:
+                        songs.append({
+                            'title': title,
+                            'artist': artist,
+                            'url': url,
+                            'genius_id': result.get('id'),
+                            'found_by_lyrics': True
+                        })
+                        
+                except Exception as e:
+                    print(f"[GENIUS API] Error procesando hit: {e}")
+                    continue
+            
+            print(f"[GENIUS API] Encontradas {len(songs)} canciones")
+            return songs
+            
+        except Exception as e:
+            print(f"[GENIUS API] Error: {e}")
+            return []
+    
+    def _search_by_keywords(self, clean_query: str, limit: int) -> List[Dict[str, Any]]:
+        """Búsqueda alternativa por palabras clave directamente en Qobuz"""
+        try:
+            # Extraer palabras significativas
+            words = clean_query.split()
+            
+            # Filtrar palabras comunes y muy cortas
+            stop_words = {'que', 'para', 'con', 'por', 'una', 'este', 'como', 'son', 'las', 'los', 'del', 'de', 'la', 'el', 'en', 'y', 'es', 'no', 'me', 'te', 'se', 'si'}
+            significant_words = [w for w in words if len(w) > 2 and w not in stop_words]
+            
+            # Estrategias de búsqueda
+            search_strategies = []
+            
+            # 1. Frases distintivas (secuencias de 3-4 palabras)
+            for i in range(len(significant_words) - 2):
+                phrase = ' '.join(significant_words[i:i+3])
+                search_strategies.append(phrase)
+            
+            # 2. Palabras individuales más largas (probablemente más únicas)
+            long_words = [w for w in significant_words if len(w) > 5]
+            search_strategies.extend(long_words[:3])
+            
+            # 3. Combinaciones de palabras clave
+            if len(significant_words) >= 2:
+                search_strategies.append(' '.join(significant_words[:2]))
+                search_strategies.append(' '.join(significant_words[-2:]))
+            
+            print(f"[KEYWORDS] Probando {len(search_strategies)} estrategias")
+            
+            results = []
+            seen_ids = set()
+            
+            for strategy in search_strategies[:5]:  # Máximo 5 estrategias
+                try:
+                    print(f"[KEYWORDS] Buscando: '{strategy}'")
+                    
+                    tracks = self.search_tracks_with_locale(strategy, limit=5, force_latin=True)
+                    
+                    for track in tracks:
+                        track_id = track.get('id')
+                        if track_id not in seen_ids:
+                            seen_ids.add(track_id)
+                            
+                            # Calcular relevancia basada en coincidencias
+                            title = track.get('title', '').lower()
+                            artist = track.get('performer', {}).get('name', '').lower()
+                            
+                            score = 0
+                            for word in significant_words:
+                                if word in title:
+                                    score += 3
+                                if word in artist:
+                                    score += 2
+                            
+                            # Solo incluir si tiene cierta relevancia
+                            if score >= 3:
+                                track['keyword_score'] = score
+                                results.append(track)
+                                print(f"[KEYWORDS] Agregado: {title} (score: {score})")
+                                
+                                if len(results) >= limit:
+                                    break
+                    
+                    if len(results) >= limit:
+                        break
+                        
+                except Exception as e:
+                    print(f"[KEYWORDS] Error con estrategia '{strategy}': {e}")
+                    continue
+            
+            # Ordenar por puntuación
+            results.sort(key=lambda x: x.get('keyword_score', 0), reverse=True)
+            
+            return results[:limit]
+            
+        except Exception as e:
+            print(f"[KEYWORDS] Error: {e}")
             return []
 
 __all__ = ["QobuzDownloader"]

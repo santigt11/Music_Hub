@@ -40,13 +40,35 @@ def search():
         mode = data.get('mode')  # permite 'lyrics'
         if not query:
             return jsonify({'success': False, 'error': 'Query vacío'}), 400
+        
         results: list[dict] = []
+        lyrics_results: list[dict] = []
+        
         if source == 'qobuz':
+            # Primero buscar por letra si hay modo lyrics
             if mode == 'lyrics':
-                tracks = downloader.search_by_lyrics(query, limit=15)
-            else:
-                tracks = downloader.search_tracks_with_locale(query, limit=15, force_latin=True)
+                lyrics_results = downloader.search_by_lyrics(query, limit=1)
+                for t in lyrics_results:
+                    item = {
+                        'id': t.get('id'),
+                        'title': t.get('title'),
+                        'artist': t.get('performer', {}).get('name', 'Unknown'),
+                        'album': t.get('album', {}).get('title', 'Unknown'),
+                        'duration': t.get('duration', 0),
+                        'cover': t.get('album', {}).get('image', {}).get('small', ''),
+                        'source': 'qobuz'
+                    }
+                    for extra in ['found_by_lyrics','genius_match','genius_url','matched_fragment']:
+                        if t.get(extra):
+                            item[extra] = t.get(extra)
+                    results.append(item)
+            
+            # Luego búsqueda normal
+            tracks = downloader.search_tracks_with_locale(query, limit=15, force_latin=True)
             for t in tracks:
+                # Evitar duplicados con resultados por letra
+                if any(existing.get('id') == t.get('id') for existing in results):
+                    continue
                 item = {
                     'id': t.get('id'),
                     'title': t.get('title'),
@@ -56,10 +78,8 @@ def search():
                     'cover': t.get('album', {}).get('image', {}).get('small', ''),
                     'source': 'qobuz'
                 }
-                for extra in ['found_by_lyrics','genius_match','genius_url','matched_fragment']:
-                    if t.get(extra):
-                        item[extra] = t.get(extra)
                 results.append(item)
+                
         elif source == 'spotify':
             if 'spotify.com' in query or query.startswith('spotify:'):
                 t_type, s_id = downloader.spotify.extract_spotify_id(query)

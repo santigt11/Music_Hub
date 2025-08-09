@@ -131,13 +131,8 @@ function updateSearchHint(query) {
     const hintElement = document.querySelector('.hint-qobuz');
     
     if (currentTab === 'qobuz' && hintElement) {
-        if (searchType.isLyrics) {
-            hintElement.innerHTML = '🎤 Búsqueda inteligente - Ignora tildes, comas, puntuación y mayúsculas';
-            hintElement.style.color = '#7FB069';
-        } else {
-            hintElement.innerHTML = '💡 Busca por título, artista, álbum o frase de letra (ignora tildes, puntuación y mayúsculas)';
-            hintElement.style.color = '';
-        }
+        hintElement.innerHTML = '💡 Busca por título, artista, álbum o frase de letra';
+        hintElement.style.color = '';
     }
 }
 
@@ -162,9 +157,7 @@ async function performSearch() {
     
     // Mostrar mensaje personalizado basado en el tipo de búsqueda
     const searchType = detectSearchType(query);
-    const loadingMessage = searchType.isLyrics ? 
-        'Buscando por letra en Genius (puede tardar unos segundos)...' : 
-        'Buscando...';
+    const loadingMessage = 'Buscando...';
     
     showLoading(loadingMessage);
     
@@ -242,7 +235,7 @@ function displayResults(results) {
         let lyricsIndicator = '';
         if (result.found_by_lyrics) {
             if (result.genius_match) {
-                lyricsIndicator = '<span class="lyrics-indicator genius" title="Encontrado en Genius - Letra confirmada">🎤✨</span>';
+                lyricsIndicator = '<span class="lyrics-indicator genius" title="Encontrado por letra">🎤✨</span>';
             } else {
                 lyricsIndicator = '<span class="lyrics-indicator" title="Encontrado por letra">🎤</span>';
             }
@@ -276,11 +269,30 @@ function displayResults(results) {
         `;
     }).join('');
     
-    resultsContainer.innerHTML = resultsHTML;
+    resultsContainer.innerHTML = resultsHTML + `
+        <div class="load-more-container">
+            <button class="load-more-btn" onclick="loadMoreResults()">
+                <span class="load-more-icon">⬇</span>
+                Cargar más resultados
+            </button>
+        </div>
+    `;
+    
     
     // Animar resultados con Anime.js
     if (window.animationManager) {
         window.animationManager.showNewResults();
+    }
+}
+
+// Función para cargar más resultados
+function loadMoreResults() {
+    // Por ahora solo muestra un mensaje, se puede implementar paginación real
+    const loadMoreBtn = document.querySelector('.load-more-btn');
+    if (loadMoreBtn) {
+        loadMoreBtn.textContent = 'No hay más resultados';
+        loadMoreBtn.disabled = true;
+        loadMoreBtn.style.opacity = '0.5';
     }
 }
 
