@@ -132,6 +132,49 @@ class QobuzDownloader:
         except Exception:
             return []
 
+    def search_with_similarity(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Busca en Qobuz y ordena resultados por similitud con la consulta.
+
+        Se usa para mapear resultados validados por Genius a pistas de Qobuz.
+        """
+        try:
+            raw_tracks = self.search_tracks_with_locale(query, limit=20, force_latin=True)
+            if not raw_tracks:
+                return []
+
+            q_clean = self._clean_lyrics_text(query)
+            q_tokens = q_clean.split()
+
+            def jaccard(a: List[str], b: List[str]) -> float:
+                sa, sb = set(a), set(b)
+                if not sa or not sb:
+                    return 0.0
+                inter = len(sa & sb)
+                union = len(sa | sb)
+                return inter / union if union else 0.0
+
+            scored = []
+            for t in raw_tracks:
+                title = (t.get('title') or '')
+                artist = (t.get('performer', {}) or {}).get('name', '')
+                cand_clean = self._clean_lyrics_text(f"{title} {artist}")
+                c_tokens = cand_clean.split()
+                score = jaccard(q_tokens, c_tokens)
+
+                # Pequeños boosts por inclusiones directas
+                if q_clean and cand_clean:
+                    if q_clean in cand_clean:
+                        score += 0.2
+                    elif cand_clean in q_clean:
+                        score += 0.1
+
+                scored.append((score, t))
+
+            scored.sort(key=lambda x: x[0], reverse=True)
+            return [t for _, t in scored[:limit]]
+        except Exception:
+            return []
+
     def fix_qobuz_locale_metadata(self, track_info: Dict[str, Any]) -> Dict[str, Any]:
         try:
             track_id = track_info.get('id')
@@ -528,7 +571,11 @@ class QobuzDownloader:
             return []
 
     def search_by_lyrics(self, query: str, limit: int = 1) -> List[Dict[str, Any]]:
-        """Busca canciones por fragmento de letra usando estrategia híbrida"""
+        """Busca canciones por fragmento de letra usando únicamente resultados validados por Genius.
+
+        Nota: si no hay un match claro en Qobuz para la canción validada por letras, NO devuelve
+        un resultado por letra alternativo. En ese caso, la UI mostrará sólo la búsqueda normal.
+        """
         try:
             print(f"[LYRICS] Buscando: '{query}'")
             
@@ -537,20 +584,10 @@ class QobuzDownloader:
             if len(clean_query.split()) < 3:
                 return []
             
-            results = []
+            # Intentar búsqueda real en Genius (con verificación de letras y mapeo estricto a Qobuz)
+            results = self._search_genius_for_lyrics(clean_query, limit)
             
-            # Estrategia 1: Intentar búsqueda real en Genius
-            print("[LYRICS] Intentando búsqueda en Genius...")
-            genius_results = self._search_genius_for_lyrics(clean_query, limit)
-            results.extend(genius_results)
-            
-            # Estrategia 2: Si Genius no funciona, buscar por palabras clave en Qobuz
-            if len(results) < limit:
-                print("[LYRICS] Buscando por palabras clave en Qobuz...")
-                keyword_results = self._search_by_keywords(clean_query, limit - len(results))
-                results.extend(keyword_results)
-            
-            # Marcar todos los resultados como encontrados por letra
+            # Marcar metadatos si hay resultados
             for result in results:
                 result['found_by_lyrics'] = True
                 result['lyrics_fragment'] = query[:100]
@@ -563,66 +600,110 @@ class QobuzDownloader:
             return []
     
     def _search_genius_for_lyrics(self, clean_query: str, limit: int) -> List[Dict[str, Any]]:
-        """Búsqueda real en Genius con verificación de letras usando API oficial"""
+        """Búsqueda real en Genius con verificación de letras usando API oficial y mapeo estricto a Qobuz."""
         try:
             # Buscar candidatos en Genius usando API oficial
             candidates = self._search_genius_api(clean_query, limit=10)
-            
-            results = []
+
+            def jaccard(a_tokens: List[str], b_tokens: List[str]) -> float:
+                a_set, b_set = set(a_tokens), set(b_tokens)
+                if not a_set or not b_set:
+                    return 0.0
+                inter = len(a_set & b_set)
+                union = len(a_set | b_set)
+                return inter / union if union else 0.0
+
+            results: List[Dict[str, Any]] = []
             for candidate in candidates[:5]:  # Solo verificar los primeros 5
                 try:
                     # Descargar letras
                     lyrics = self._fetch_genius_lyrics(candidate['url'])
                     if not lyrics:
                         continue
-                    
-                    # Verificar coincidencia
+
+                    # Verificar coincidencia exacta del fragmento limpiado
                     clean_lyrics = self._clean_lyrics_text(lyrics)
-                    if clean_query in clean_lyrics:
-                        print(f"[LYRICS] ¡Coincidencia encontrada en: {candidate['title']} - {candidate['artist']}!")
-                        
-                        # Buscar en Qobuz
-                        qobuz_query = f"{candidate['title']} {candidate['artist']}"
-                        print(f"[LYRICS] Buscando en Qobuz: '{qobuz_query}'")
-                        
-                        qobuz_results = self.search_with_similarity(qobuz_query, limit=2)
-                        print(f"[LYRICS] Qobuz devolvió {len(qobuz_results)} resultados")
-                        
-                        for i, track in enumerate(qobuz_results):
-                            qobuz_title = track.get('title', 'Unknown')
-                            qobuz_artist = track.get('performer', {}).get('name', 'Unknown')
-                            print(f"[LYRICS]   {i+1}. {qobuz_title} - {qobuz_artist}")
-                            
-                            # Verificar si el resultado de Qobuz coincide razonablemente con Genius
-                            genius_title_clean = self._clean_lyrics_text(candidate['title'])
-                            genius_artist_clean = self._clean_lyrics_text(candidate['artist'])
-                            qobuz_title_clean = self._clean_lyrics_text(qobuz_title)
-                            qobuz_artist_clean = self._clean_lyrics_text(qobuz_artist)
-                            
-                            title_match = genius_title_clean in qobuz_title_clean or qobuz_title_clean in genius_title_clean
-                            artist_match = genius_artist_clean in qobuz_artist_clean or qobuz_artist_clean in genius_artist_clean
-                            
-                            if title_match or artist_match:
-                                print(f"[LYRICS]      ✅ Coincidencia válida (título: {title_match}, artista: {artist_match})")
-                                track_copy = track.copy()
-                                track_copy['found_by_lyrics'] = True
-                                results.append(track_copy)
-                                
-                                if len(results) >= limit:
-                                    break
-                            else:
-                                print(f"[LYRICS]      ❌ No coincide - buscando siguiente...")
+                    if clean_query not in clean_lyrics:
+                        continue
+
+                    print(f"[LYRICS] ¡Coincidencia de letra en: {candidate['title']} - {candidate['artist']}!")
+
+                    # Preparar términos limpios para matching
+                    genius_title_clean = self._clean_lyrics_text(candidate['title'])
+                    genius_artist_clean = self._clean_lyrics_text(candidate['artist'])
+                    genius_title_tokens = [t for t in genius_title_clean.split() if t]
+                    genius_artist_tokens = [t for t in genius_artist_clean.split() if t]
+
+                    # Intentar diferentes queries en Qobuz para mejorar el mapeo
+                    q_queries = [
+                        f"{candidate['title']} {candidate['artist']}",
+                        f"{candidate['artist']} {candidate['title']}"
+                    ]
+
+                    seen_ids = set()
+                    q_matches: List[Dict[str, Any]] = []
+                    for q in q_queries:
+                        qobuz_results = self.search_with_similarity(q, limit=5)
+                        for track in qobuz_results:
+                            tid = track.get('id')
+                            if tid in seen_ids:
                                 continue
-                        
+                            seen_ids.add(tid)
+
+                            q_title = track.get('title', '')
+                            q_artist = track.get('performer', {}).get('name', '')
+                            q_title_clean = self._clean_lyrics_text(q_title)
+                            q_artist_clean = self._clean_lyrics_text(q_artist)
+                            q_title_tokens = [t for t in q_title_clean.split() if t]
+                            q_artist_tokens = [t for t in q_artist_clean.split() if t]
+
+                            # Reglas de matching estricto: artista debe coincidir claramente
+                            artist_ratio = jaccard(genius_artist_tokens, q_artist_tokens)
+                            artist_ok = (
+                                genius_artist_clean == q_artist_clean or
+                                genius_artist_clean in q_artist_clean or
+                                q_artist_clean in genius_artist_clean or
+                                artist_ratio >= 0.6
+                            )
+
+                            # Matching de título: permitir exacto, inclusión o jaccard alto
+                            title_ratio = jaccard(genius_title_tokens, q_title_tokens)
+                            title_ok = (
+                                genius_title_clean == q_title_clean or
+                                genius_title_clean in q_title_clean or
+                                q_title_clean in genius_title_clean or
+                                title_ratio >= 0.6
+                            )
+
+                            if artist_ok and title_ok:
+                                print(f"[LYRICS]  ✅ Match Qobuz: {q_title} - {q_artist} (artist_ratio={artist_ratio:.2f}, title_ratio={title_ratio:.2f})")
+                                q_matches.append(track)
+                            else:
+                                print(f"[LYRICS]  ❌ Descarta: {q_title} - {q_artist} (artist_ratio={artist_ratio:.2f}, title_ratio={title_ratio:.2f})")
+
+                    # Ordenar matches por suma de ratios y elegir los primeros
+                    def score_track(track: Dict[str, Any]) -> float:
+                        q_title = self._clean_lyrics_text(track.get('title', ''))
+                        q_artist = self._clean_lyrics_text(track.get('performer', {}).get('name', ''))
+                        t_ratio = jaccard(genius_title_clean.split(), q_title.split())
+                        a_ratio = jaccard(genius_artist_clean.split(), q_artist.split())
+                        return t_ratio + a_ratio
+
+                    q_matches.sort(key=score_track, reverse=True)
+                    for track in q_matches:
+                        results.append(track)
                         if len(results) >= limit:
                             break
-                
+
+                    if len(results) >= limit:
+                        break
+
                 except Exception as e:
                     print(f"[LYRICS] Error verificando {candidate.get('title')}: {e}")
                     continue
-            
+
             return results
-            
+
         except Exception as e:
             print(f"[LYRICS] Error en búsqueda Genius: {e}")
             return []
