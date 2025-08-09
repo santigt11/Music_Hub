@@ -610,24 +610,29 @@ class QobuzDownloader:
         - Si no hay match en Qobuz, devuelve un resultado tipo 'genius' (id=None)
         """
         try:
-            print(f"[LYRICS] Buscando: '{query}'")
+            print(f"[LYRICS] 🎤 Iniciando búsqueda por letras: '{query}'")
 
             # Limpiar sólo para verificación de inclusión
             clean_query = self._clean_lyrics_text(query)
             tokens = clean_query.split()
-            print(f"[LYRICS] clean='{clean_query}' tokens={len(tokens)}")
+            print(f"[LYRICS] ✂️ Frase limpia: '{clean_query}' | tokens: {len(tokens)}")
+            
             if len(tokens) < 3:
+                print(f"[LYRICS] ❌ Muy pocos tokens ({len(tokens)}), se necesitan al menos 3")
                 return []
 
+            print(f"[LYRICS] 🔍 Llamando a _search_genius_for_lyrics...")
             results = self._search_genius_for_lyrics(original_query=query, clean_query=clean_query, limit=limit)
+            print(f"[LYRICS] 📊 _search_genius_for_lyrics retornó {len(results)} resultados")
 
             # Marcar metadatos si hay resultados
-            for result in results:
+            for i, result in enumerate(results):
                 result['found_by_lyrics'] = True
                 result['lyrics_fragment'] = query[:100]
                 result['matched_fragment'] = query[:100]
+                print(f"[LYRICS] 🏷️ Resultado {i+1}: '{result.get('title')}' por '{result.get('performer', {}).get('name')}'")
 
-            print(f"[LYRICS] Retornando {len(results)} resultados")
+            print(f"[LYRICS] ✅ Retornando {len(results)} resultados finales")
             if results:
                 try:
                     print("[LYRICS] Títulos:", [f"{r.get('title')} ({r.get('source')})" for r in results])

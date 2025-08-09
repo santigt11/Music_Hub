@@ -40,7 +40,43 @@ Después de agregar las variables:
 | `FLASK_DEBUG` | Habilitar debug (0 o 1) | ❌ Opcional |
 
 ## Verificación
-Una vez configurado, la búsqueda por letras debería funcionar igual que en local.
 
-### Logs para verificar
+### 1. Verificar variables de entorno
+Accede a: `https://tu-dominio.vercel.app/api/debug/env`
+
+Debería mostrar:
+```json
+{
+  "genius_token_configured": true,
+  "genius_token_preview": "bOb0AM7TteQJ9J2t1JjQ...",
+  "qobuz_token_configured": true,
+  "env_genius": true,
+  "env_qobuz": true
+}
+```
+
+### 2. Probar búsqueda por letras
+Accede a: `https://tu-dominio.vercel.app/api/debug/lyrics-test`
+
+Debería mostrar:
+```json
+{
+  "success": true,
+  "results_count": 1,
+  "results": [{"title": "POV", "artist": "ROBLEIS", ...}]
+}
+```
+
+### 3. Revisar logs
 Puedes revisar los logs de Vercel en la sección **Functions** para ver si hay errores relacionados con el token de Genius.
+
+## Troubleshooting
+
+Si las pruebas fallan:
+
+1. **Variables no configuradas**: Verifica que `env_genius: true` en `/api/debug/env`
+2. **Token inválido**: Verifica que el token de Genius sea correcto
+3. **Errores de red**: Revisa los logs de funciones en Vercel
+4. **Cache**: Intenta hacer un redeploy completo
+
+Una vez configurado correctamente, la búsqueda por letras debería funcionar igual que en local.

@@ -24,6 +24,46 @@ def api_test():
     """Endpoint de test conservado para script de pruebas locales."""
     return jsonify({"status": "ok"})
 
+@api_bp.route('/debug/env')
+def debug_env():
+    """Endpoint para verificar variables de entorno en producción"""
+    import os
+    from ..config import GENIUS_TOKEN, QOBUZ_TOKEN
+    
+    return jsonify({
+        "genius_token_configured": bool(GENIUS_TOKEN and GENIUS_TOKEN != "tu_token_de_genius_aqui"),
+        "genius_token_preview": GENIUS_TOKEN[:20] + "..." if GENIUS_TOKEN else "NO_SET",
+        "qobuz_token_configured": bool(QOBUZ_TOKEN),
+        "qobuz_token_preview": QOBUZ_TOKEN[:20] + "..." if QOBUZ_TOKEN else "NO_SET",
+        "env_genius": bool(os.environ.get('GENIUS_TOKEN')),
+        "env_qobuz": bool(os.environ.get('QOBUZ_TOKEN')),
+        "flask_env": os.environ.get('FLASK_ENV', 'not_set')
+    })
+
+@api_bp.route('/debug/lyrics-test')
+def debug_lyrics_test():
+    """Endpoint para probar la funcionalidad de búsqueda por letras"""
+    try:
+        test_phrase = "y si te digo que es para toda la vida pero no como esos"
+        print(f"[DEBUG] Iniciando test de búsqueda por letras...")
+        
+        results = downloader.search_by_lyrics(test_phrase, limit=1)
+        
+        return jsonify({
+            "success": True,
+            "test_phrase": test_phrase,
+            "results_count": len(results),
+            "results": results[:1] if results else [],
+            "message": "Test de búsqueda por letras completado"
+        })
+    except Exception as e:
+        print(f"[DEBUG] Error en test de búsqueda por letras: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "test_phrase": test_phrase
+        }), 500
+
 @api_bp.route('/token-info')
 def token_info():
     try:
@@ -49,9 +89,13 @@ def search():
         if source == 'qobuz':
             # Primero buscar por letra si hay modo lyrics
             if mode == 'lyrics':
+                print(f"[API DEBUG] Iniciando búsqueda por letras con frase: '{query}'")
                 lyrics_results = downloader.search_by_lyrics(query, limit=1)
+                print(f"[API DEBUG] Resultados de búsqueda por letras: {len(lyrics_results)} encontrados")
                 logger.info("/search LYRICS mode: frase='%s' -> lyrics_results=%d", query, len(lyrics_results))
-                for t in lyrics_results:
+                
+                for i, t in enumerate(lyrics_results):
+                    print(f"[API DEBUG] Procesando resultado {i+1}: {t.get('title')} - {t.get('performer', {}).get('name', 'Unknown')}")
                     item = {
                         'id': t.get('id'),
                         'title': t.get('title'),
@@ -65,8 +109,12 @@ def search():
                         if t.get(extra):
                             item[extra] = t.get(extra)
                     results.append(item)
+                    
                 if lyrics_results:
+                    print(f"[API DEBUG] Primer resultado por letras: '{results[0]['title']}' source={results[0].get('source')} genius={results[0].get('genius_match')}")
                     logger.info("/search LYRICS first item: title='%s' source=%s genius=%s", results[0]['title'], results[0].get('source'), results[0].get('genius_match'))
+                else:
+                    print("[API DEBUG] ❌ No se encontraron resultados por letras")
             
             # Luego búsqueda normal
             tracks = downloader.search_tracks_with_locale(query, limit=15, force_latin=True)
