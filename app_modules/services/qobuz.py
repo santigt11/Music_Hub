@@ -591,6 +591,7 @@ class QobuzDownloader:
             for result in results:
                 result['found_by_lyrics'] = True
                 result['lyrics_fragment'] = query[:100]
+                result['matched_fragment'] = query[:100]
             
             print(f"[LYRICS] Retornando {len(results)} resultados")
             return results[:limit]
@@ -691,7 +692,10 @@ class QobuzDownloader:
 
                     q_matches.sort(key=score_track, reverse=True)
                     for track in q_matches:
-                        results.append(track)
+                        t_copy = track.copy()
+                        t_copy['genius_match'] = True
+                        t_copy['genius_url'] = candidate.get('url')
+                        results.append(t_copy)
                         if len(results) >= limit:
                             break
 
