@@ -579,16 +579,40 @@ class QobuzDownloader:
                     # Verificar coincidencia
                     clean_lyrics = self._clean_lyrics_text(lyrics)
                     if clean_query in clean_lyrics:
-                        print(f"[LYRICS] ¡Coincidencia encontrada en: {candidate['title']}!")
+                        print(f"[LYRICS] ¡Coincidencia encontrada en: {candidate['title']} - {candidate['artist']}!")
                         
                         # Buscar en Qobuz
                         qobuz_query = f"{candidate['title']} {candidate['artist']}"
-                        qobuz_results = self.search_with_similarity(qobuz_query, limit=2)
+                        print(f"[LYRICS] Buscando en Qobuz: '{qobuz_query}'")
                         
-                        for track in qobuz_results:
-                            results.append(track.copy())
-                            if len(results) >= limit:
-                                break
+                        qobuz_results = self.search_with_similarity(qobuz_query, limit=2)
+                        print(f"[LYRICS] Qobuz devolvió {len(qobuz_results)} resultados")
+                        
+                        for i, track in enumerate(qobuz_results):
+                            qobuz_title = track.get('title', 'Unknown')
+                            qobuz_artist = track.get('performer', {}).get('name', 'Unknown')
+                            print(f"[LYRICS]   {i+1}. {qobuz_title} - {qobuz_artist}")
+                            
+                            # Verificar si el resultado de Qobuz coincide razonablemente con Genius
+                            genius_title_clean = self._clean_lyrics_text(candidate['title'])
+                            genius_artist_clean = self._clean_lyrics_text(candidate['artist'])
+                            qobuz_title_clean = self._clean_lyrics_text(qobuz_title)
+                            qobuz_artist_clean = self._clean_lyrics_text(qobuz_artist)
+                            
+                            title_match = genius_title_clean in qobuz_title_clean or qobuz_title_clean in genius_title_clean
+                            artist_match = genius_artist_clean in qobuz_artist_clean or qobuz_artist_clean in genius_artist_clean
+                            
+                            if title_match or artist_match:
+                                print(f"[LYRICS]      ✅ Coincidencia válida (título: {title_match}, artista: {artist_match})")
+                                track_copy = track.copy()
+                                track_copy['found_by_lyrics'] = True
+                                results.append(track_copy)
+                                
+                                if len(results) >= limit:
+                                    break
+                            else:
+                                print(f"[LYRICS]      ❌ No coincide - buscando siguiente...")
+                                continue
                         
                         if len(results) >= limit:
                             break
