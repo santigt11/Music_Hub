@@ -692,58 +692,83 @@ class QobuzDownloader:
         en las letras y mapea a Qobuz con una búsqueda directa por título + artista.
         """
         try:
+            print(f"[LYRICS] 🔍 Iniciando _search_genius_for_lyrics con: '{original_query}'")
+            
             # 1) Candidatos desde API oficial; si falla, scraping
+            print("[LYRICS] 📡 Buscando candidatos en Genius API...")
             candidates = self._search_genius_api(original_query, limit=10)
+            print(f"[LYRICS] 📊 API devolvió {len(candidates)} candidatos")
+            
             if not candidates:
+                print("[LYRICS] 🌐 API falló, intentando scraping...")
                 candidates = self._try_genius_scraping(original_query, limit=10)
-            print(f"[LYRICS] Genius candidatos: {len(candidates)}")
+                print(f"[LYRICS] 🕷️ Scraping devolvió {len(candidates)} candidatos")
+                
+            print(f"[LYRICS] 📋 Total candidatos Genius: {len(candidates)}")
             try:
-                print("[LYRICS] Top candidatos:", [c.get('title') for c in candidates[:3]])
+                print("[LYRICS] 🎵 Top candidatos:", [c.get('title') for c in candidates[:3]])
             except Exception:
                 pass
 
+            if not candidates:
+                print("[LYRICS] ❌ Sin candidatos de Genius, saliendo")
+                return []
+
             results: List[Dict[str, Any]] = []
-            for cand in candidates[:5]:
+            for i, cand in enumerate(candidates[:5]):
                 try:
                     title = cand.get('title') or ''
                     artist = cand.get('artist') or ''
                     url = cand.get('url') or ''
+                    
+                    print(f"[LYRICS] 🔎 Procesando candidato {i+1}/5: '{title}' - '{artist}'")
+                    
                     if not (title and url):
+                        print(f"[LYRICS] ⚠️ Candidato {i+1} incompleto (título={bool(title)}, url={bool(url)})")
                         continue
 
                     # 2) Descargar letras y validar fragmento
-                    print(f"[LYRICS] Verificando candidato: '{title}' - '{artist}' -> {url}")
+                    print(f"[LYRICS] 📥 Descargando letras de: {url}")
                     lyrics = self._fetch_genius_lyrics(url)
+                    
                     if not lyrics:
-                        print("[LYRICS] Sin letras descargadas")
+                        print(f"[LYRICS] ❌ No se pudieron descargar letras para '{title}'")
                         continue
+                        
+                    print(f"[LYRICS] ✅ Letras descargadas: {len(lyrics)} caracteres")
+                    
                     cl = self._clean_lyrics_text(lyrics)
+                    print(f"[LYRICS] ✂️ Letras limpiadas: {len(cl)} caracteres")
+                    
                     if clean_query not in cl:
-                        print("[LYRICS] Fragmento no encontrado en letras limpiadas")
+                        print(f"[LYRICS] ❌ Fragmento '{clean_query[:30]}...' no encontrado en letras")
                         continue
 
-                    print(f"[LYRICS] ✓ Letra confirmada para: {title} - {artist}")
+                    print(f"[LYRICS] ✅ Fragmento confirmado en: {title} - {artist}")
 
                     # 3) Intentar mapear a Qobuz con coincidencia EXACTA de título
                     q_query = f"{title} {artist}".strip()
-                    print(f"[LYRICS] Buscando en Qobuz por: '{q_query}' (titulo exacto requerido)")
-                    # Buscar solo 5 resultados en Qobuz como pediste
+                    print(f"[LYRICS] 🔍 Buscando en Qobuz: '{q_query}'")
+                    
                     q_tracks = self.search_tracks_with_locale(q_query, limit=5, force_latin=True) or []
+                    print(f"[LYRICS] 📊 Qobuz encontró {len(q_tracks)} tracks")
+                    
                     try:
-                        print(f"[LYRICS] Qobuz candidatos ({len(q_tracks)}):", [t.get('title') for t in q_tracks])
+                        print(f"[LYRICS] 🎼 Candidatos Qobuz:", [t.get('title') for t in q_tracks])
                     except Exception:
                         pass
 
-                    # Coincidencia exacta de título (ni más, ni menos)
+                    # Coincidencia exacta de título
                     mapped = None
                     for tr in q_tracks:
                         q_title = (tr.get('title') or '').strip()
                         if q_title == title.strip():
                             mapped = tr
+                            print(f"[LYRICS] 🎯 Match exacto encontrado: '{q_title}'")
                             break
 
                     if mapped:
-                        print(f"[LYRICS] ✓ Mapeo exacto Qobuz: '{mapped.get('title')}'")
+                        print(f"[LYRICS] ✅ Mapeo exitoso: '{mapped.get('title')}'")
                         m = mapped.copy()
                         m['genius_match'] = True
                         m['genius_url'] = url
