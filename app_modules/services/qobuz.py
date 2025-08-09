@@ -666,6 +666,7 @@ class QobuzDownloader:
 
                     # 3) Intentar mapear a Qobuz con coincidencia EXACTA de título
                     q_query = f"{title} {artist}".strip()
+                    print(f"[LYRICS] Buscando en Qobuz por: '{q_query}' (titulo exacto requerido)")
                     # Buscar solo 5 resultados en Qobuz como pediste
                     q_tracks = self.search_tracks_with_locale(q_query, limit=5, force_latin=True) or []
                     try:
