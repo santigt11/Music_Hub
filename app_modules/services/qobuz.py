@@ -138,7 +138,26 @@ class QobuzDownloader:
         Se usa para mapear resultados validados por Genius a pistas de Qobuz.
         """
         try:
-            raw_tracks = self.search_tracks_with_locale(query, limit=20, force_latin=True)
+            # Probar con y sin forcing de locale para ampliar cobertura
+            raw_tracks = []
+            seen_ids = set()
+            for force in (True, False):
+                trs = self.search_tracks_with_locale(query, limit=30, force_latin=force)
+                for t in trs:
+                    tid = t.get('id')
+                    if tid in seen_ids:
+                        continue
+                    seen_ids.add(tid)
+                    raw_tracks.append(t)
+            # Fallback adicional sin locale helper
+            if not raw_tracks:
+                trs = self.search_tracks(query, limit=30)
+                for t in trs:
+                    tid = t.get('id')
+                    if tid in seen_ids:
+                        continue
+                    seen_ids.add(tid)
+                    raw_tracks.append(t)
             if not raw_tracks:
                 return []
 
@@ -695,9 +714,25 @@ class QobuzDownloader:
                         t_copy = track.copy()
                         t_copy['genius_match'] = True
                         t_copy['genius_url'] = candidate.get('url')
+                        # Asegurar fuente
+                        t_copy['source'] = 'qobuz'
                         results.append(t_copy)
                         if len(results) >= limit:
                             break
+
+                    # Si no hubo match en Qobuz pero la letra coincide, devolver un resultado 'genius'
+                    if not q_matches and len(results) < limit:
+                        results.append({
+                            'id': None,
+                            'title': candidate['title'],
+                            'performer': {'name': candidate['artist']},
+                            'album': {},
+                            'duration': 0,
+                            'cover': '',
+                            'source': 'genius',
+                            'genius_match': True,
+                            'genius_url': candidate.get('url'),
+                        })
 
                     if len(results) >= limit:
                         break
