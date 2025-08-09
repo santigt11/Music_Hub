@@ -602,7 +602,9 @@ class QobuzDownloader:
 
             # Limpiar sólo para verificación de inclusión
             clean_query = self._clean_lyrics_text(query)
-            if len(clean_query.split()) < 3:
+            tokens = clean_query.split()
+            print(f"[LYRICS] clean='{clean_query}' tokens={len(tokens)}")
+            if len(tokens) < 3:
                 return []
 
             results = self._search_genius_for_lyrics(original_query=query, clean_query=clean_query, limit=limit)
@@ -614,6 +616,11 @@ class QobuzDownloader:
                 result['matched_fragment'] = query[:100]
 
             print(f"[LYRICS] Retornando {len(results)} resultados")
+            if results:
+                try:
+                    print("[LYRICS] Títulos:", [f"{r.get('title')} ({r.get('source')})" for r in results])
+                except Exception:
+                    pass
             return results[:limit]
 
         except Exception as e:
@@ -629,6 +636,11 @@ class QobuzDownloader:
             candidates = self._search_genius_api(original_query, limit=10)
             if not candidates:
                 candidates = self._try_genius_scraping(original_query, limit=10)
+            print(f"[LYRICS] Genius candidatos: {len(candidates)}")
+            try:
+                print("[LYRICS] Top candidatos:", [c.get('title') for c in candidates[:3]])
+            except Exception:
+                pass
 
             results: List[Dict[str, Any]] = []
             for cand in candidates[:5]:
@@ -640,11 +652,14 @@ class QobuzDownloader:
                         continue
 
                     # 2) Descargar letras y validar fragmento
+                    print(f"[LYRICS] Verificando candidato: '{title}' - '{artist}' -> {url}")
                     lyrics = self._fetch_genius_lyrics(url)
                     if not lyrics:
+                        print("[LYRICS] Sin letras descargadas")
                         continue
                     cl = self._clean_lyrics_text(lyrics)
                     if clean_query not in cl:
+                        print("[LYRICS] Fragmento no encontrado en letras limpiadas")
                         continue
 
                     print(f"[LYRICS] ✓ Letra confirmada para: {title} - {artist}")
@@ -653,6 +668,10 @@ class QobuzDownloader:
                     q_query = f"{title} {artist}".strip()
                     # Buscar solo 5 resultados en Qobuz como pediste
                     q_tracks = self.search_tracks_with_locale(q_query, limit=5, force_latin=True) or []
+                    try:
+                        print(f"[LYRICS] Qobuz candidatos ({len(q_tracks)}):", [t.get('title') for t in q_tracks])
+                    except Exception:
+                        pass
 
                     # Coincidencia exacta de título (ni más, ni menos)
                     mapped = None
@@ -663,12 +682,14 @@ class QobuzDownloader:
                             break
 
                     if mapped:
+                        print(f"[LYRICS] ✓ Mapeo exacto Qobuz: '{mapped.get('title')}'")
                         m = mapped.copy()
                         m['genius_match'] = True
                         m['genius_url'] = url
                         m['source'] = 'qobuz'
                         results.append(m)
                     else:
+                        print("[LYRICS] ✗ Sin match exacto en Qobuz; devolviendo resultado de Genius")
                         results.append({
                             'id': None,
                             'title': title,

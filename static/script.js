@@ -180,6 +180,9 @@ async function performSearch() {
         console.log('Response status:', response.status);
         const data = await response.json();
         console.log('Response data:', data);
+        if (data.debug) {
+            console.log('API debug -> lyrics_count:', data.debug.lyrics_count, 'lyrics_titles:', data.debug.lyrics_titles, 'first_item:', data.debug.first_item, 'first_is_lyrics:', data.debug.first_is_lyrics);
+        }
         
         if (data.success) {
             // Reordenar en cliente para priorizar resultados por letra

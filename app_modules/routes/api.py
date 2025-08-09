@@ -8,6 +8,7 @@ from flask import Blueprint, request, jsonify, send_file
 import os, tempfile, time, hashlib, logging
 import requests
 from ..app_factory import get_downloader
+from ..config import FLASK_DEBUG
 from ..utils.metadata import add_metadata_to_file
 from ..utils.token import get_token_info
 
@@ -71,7 +72,7 @@ def search():
             tracks = downloader.search_tracks_with_locale(query, limit=15, force_latin=True)
             for t in tracks:
                 # Evitar duplicados con resultados por letra
-                if any(existing.get('id') == t.get('id') for existing in results):
+                if any((existing.get('id') and existing.get('id') == t.get('id')) or (existing.get('title') == t.get('title') and existing.get('artist') == (t.get('performer', {}) or {}).get('name', 'Unknown')) for existing in results):
                     continue
                 item = {
                     'id': t.get('id'),
@@ -131,10 +132,13 @@ def search():
                         'cover': track.get('album', {}).get('image', {}).get('small', ''),
                         'source': 'qobuz'
                     })
-        # Poner resultados por letra primero por claridad en UI
+        # Poner resultados por letra primero y, si existen, limitar a mostrar solo uno de lyrics
         if results:
-            lyrics_first = [r for r in results if r.get('found_by_lyrics')] + [r for r in results if not r.get('found_by_lyrics')]
-            results = lyrics_first
+            lyrics_items = [r for r in results if r.get('found_by_lyrics')]
+            normal_items = [r for r in results if not r.get('found_by_lyrics')]
+            if lyrics_items:
+                lyrics_items = lyrics_items[:1]
+            results = lyrics_items + normal_items
 
         # Log básico de conteos para depuración
         try:
@@ -152,7 +156,18 @@ def search():
         except Exception:
             pass
 
-        return jsonify({'success': True, 'results': results, 'total': len(results)})
+        payload = {'success': True, 'results': results, 'total': len(results)}
+        if FLASK_DEBUG:
+            try:
+                payload['debug'] = {
+                    'lyrics_count': len(lyrics_results),
+                    'lyrics_titles': [r.get('title') for r in lyrics_results],
+                    'first_item': results[0].get('title') if results else None,
+                    'first_is_lyrics': bool(results and results[0].get('found_by_lyrics')),
+                }
+            except Exception:
+                pass
+        return jsonify(payload)
     except Exception as e:
         logger.exception("Error en /search")
         return jsonify({'success': False, 'error': str(e)}), 500
