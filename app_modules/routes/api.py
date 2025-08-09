@@ -58,7 +58,7 @@ def search():
                         'cover': t.get('album', {}).get('image', {}).get('small', ''),
                         'source': 'qobuz'
                     }
-                    for extra in ['found_by_lyrics','genius_match','genius_url','matched_fragment']:
+                    for extra in ['found_by_lyrics','genius_match','genius_url','matched_fragment','lyrics_fragment']:
                         if t.get(extra):
                             item[extra] = t.get(extra)
                     results.append(item)
@@ -79,7 +79,7 @@ def search():
                     'source': 'qobuz'
                 }
                 results.append(item)
-                
+
         elif source == 'spotify':
             if 'spotify.com' in query or query.startswith('spotify:'):
                 t_type, s_id = downloader.spotify.extract_spotify_id(query)
@@ -127,6 +127,20 @@ def search():
                         'cover': track.get('album', {}).get('image', {}).get('small', ''),
                         'source': 'qobuz'
                     })
+        # Log básico de conteos para depuración
+        try:
+            logger.info(
+                "/search q='%s' mode=%s src=%s -> lyrics=%d, normal=%d, total=%d",
+                query,
+                mode,
+                source,
+                len(lyrics_results),
+                len([r for r in results if not r.get('found_by_lyrics')]),
+                len(results),
+            )
+        except Exception:
+            pass
+
         return jsonify({'success': True, 'results': results, 'total': len(results)})
     except Exception as e:
         logger.exception("Error en /search")
