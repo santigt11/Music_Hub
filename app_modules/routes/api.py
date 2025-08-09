@@ -44,7 +44,11 @@ def debug_env():
 def debug_lyrics_test():
     """Endpoint para probar la funcionalidad de búsqueda por letras"""
     import traceback
+    import datetime
     debug_info = []
+    
+    timestamp = datetime.datetime.now().isoformat()
+    debug_info.append(f"[DEBUG] Timestamp del deployment: {timestamp}")
     
     try:
         test_phrase = "y si te digo que es para toda la vida pero no como esos"
@@ -54,6 +58,8 @@ def debug_lyrics_test():
         from ..config import GENIUS_TOKEN
         debug_info.append(f"[DEBUG] Token disponible: {bool(GENIUS_TOKEN)}")
         debug_info.append(f"[DEBUG] Token preview: {GENIUS_TOKEN[:20]}..." if GENIUS_TOKEN else "[DEBUG] No token")
+        
+        debug_info.append("[DEBUG] ⚠️ VERSIÓN CON LOGGING DETALLADO ACTIVADA")
         
         # Intentar la búsqueda
         results = downloader.search_by_lyrics(test_phrase, limit=1)
