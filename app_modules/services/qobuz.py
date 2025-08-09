@@ -9,7 +9,7 @@ import unicodedata
 from bs4 import BeautifulSoup
 import requests
 from .spotify import SpotifyHandler
-from ..config import QOBUZ_TOKEN
+from ..config import QOBUZ_TOKEN, GENIUS_TOKEN
 
 class QobuzDownloader:
     base_url = "https://www.qobuz.com/api.json/0.2"
@@ -473,8 +473,14 @@ class QobuzDownloader:
         try:
             import urllib.parse
             
-            # Token oficial del API de Genius
-            genius_token = "bOb0AM7TteQJ9J2t1JjQtHfSw2qlhp_U5oyFRenLmshiQw0jgrowXLyurdbda6Rt"
+            # Token oficial del API de Genius (desde config)
+            genius_token = GENIUS_TOKEN
+            
+            if not genius_token or genius_token == "tu_token_de_genius_aqui":
+                print("[GENIUS API] ❌ Token de Genius no configurado correctamente")
+                return []
+                
+            print(f"[GENIUS API] ✅ Usando token: {genius_token[:20]}...")
             
             headers = {
                 'Authorization': f'Bearer {genius_token}',
@@ -487,16 +493,22 @@ class QobuzDownloader:
             api_url = f"https://api.genius.com/search?q={encoded_query}"
             
             print(f"[GENIUS API] Buscando en: {api_url}")
+            print(f"[GENIUS API] Headers: {headers}")
             
             resp = self.session.get(api_url, headers=headers, timeout=15)
+            print(f"[GENIUS API] Respuesta recibida - Status: {resp.status_code}")
+            
             if resp.status_code != 200:
                 print(f"[GENIUS API] Error HTTP: {resp.status_code}")
+                print(f"[GENIUS API] Respuesta: {resp.text[:200]}...")
                 return []
             
             data = resp.json()
+            print(f"[GENIUS API] JSON parseado exitosamente - Keys: {list(data.keys())}")
             
             if 'response' not in data or 'hits' not in data['response']:
                 print("[GENIUS API] Estructura de respuesta inesperada")
+                print(f"[GENIUS API] Data completa: {data}")
                 return []
             
             hits = data['response']['hits']
@@ -721,8 +733,14 @@ class QobuzDownloader:
         try:
             import urllib.parse
             
-            # Tu token de Genius
-            genius_token = "bOb0AM7TteQJ9J2t1JjQtHfSw2qlhp_U5oyFRenLmshiQw0jgrowXLyurdbda6Rt"
+            # Usar token de Genius desde configuración
+            genius_token = GENIUS_TOKEN
+            
+            if not genius_token or genius_token == "tu_token_de_genius_aqui":
+                print("[GENIUS API] ❌ Token de Genius no configurado correctamente")
+                return []
+                
+            print(f"[GENIUS API] ✅ Usando token: {genius_token[:20]}...")
             
             headers = {
                 'Authorization': f'Bearer {genius_token}',
