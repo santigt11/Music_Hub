@@ -45,6 +45,9 @@ def debug_lyrics_test():
     """Endpoint para probar la funcionalidad de búsqueda por letras"""
     import traceback
     import datetime
+    import io
+    import sys
+    
     debug_info = []
     
     timestamp = datetime.datetime.now().isoformat()
@@ -61,9 +64,84 @@ def debug_lyrics_test():
         
         debug_info.append("[DEBUG] ⚠️ VERSIÓN CON LOGGING DETALLADO ACTIVADA")
         
-        # Intentar la búsqueda
-        results = downloader.search_by_lyrics(test_phrase, limit=1)
-        debug_info.append(f"[DEBUG] Búsqueda completada, resultados: {len(results)}")
+        # Capturar todos los prints durante la búsqueda
+        old_stdout = sys.stdout
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        
+        try:
+            # Intentar la búsqueda
+            debug_info.append("[DEBUG] 🚀 Iniciando búsqueda con captura de logs...")
+            results = downloader.search_by_lyrics(test_phrase, limit=1)
+            debug_info.append(f"[DEBUG] Búsqueda completada, resultados: {len(results)}")
+            
+            # Restaurar stdout y capturar lo que se imprimió
+            sys.stdout = old_stdout
+            captured_logs = captured_output.getvalue()
+            
+            if captured_logs:
+                debug_info.append("[DEBUG] 📝 Logs capturados durante la búsqueda:")
+                for line in captured_logs.strip().split('\n'):
+                    if line.strip():
+                        debug_info.append(f"  {line}")
+            else:
+                debug_info.append("[DEBUG] ❌ No se capturaron logs de la búsqueda")
+                
+        except Exception as search_error:
+            sys.stdout = old_stdout
+            debug_info.append(f"[DEBUG] 💥 Error durante la búsqueda: {str(search_error)}")
+            debug_info.append(f"[DEBUG] 📋 Traceback: {traceback.format_exc()}")
+            
+        # Si no hay resultados, intentar búsqueda simple
+        if not results:
+            debug_info.append("[DEBUG] Sin resultados, intentando búsqueda simple...")
+            try:
+                # Probar directamente la API de Genius
+                import requests
+                import urllib.parse
+                
+                headers = {
+                    'Authorization': f'Bearer {GENIUS_TOKEN}',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+                
+                encoded_query = urllib.parse.quote("Robleis POV")
+                api_url = f"https://api.genius.com/search?q={encoded_query}"
+                
+                debug_info.append(f"[DEBUG] Probando API directa: {api_url}")
+                response = requests.get(api_url, headers=headers, timeout=5)
+                debug_info.append(f"[DEBUG] Response status: {response.status_code}")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    hits = data.get('response', {}).get('hits', [])
+                    debug_info.append(f"[DEBUG] API responde OK, hits: {len(hits)}")
+                else:
+                    debug_info.append(f"[DEBUG] API error: {response.text[:200]}")
+                    
+            except Exception as e:
+                debug_info.append(f"[DEBUG] Error en test directo: {str(e)}")
+        
+        return jsonify({
+            "success": True,
+            "test_phrase": test_phrase,
+            "results_count": len(results),
+            "results": results[:1] if results else [],
+            "debug_info": debug_info,
+            "message": "Test de búsqueda por letras completado"
+        })
+        
+    except Exception as e:
+        debug_info.append(f"[DEBUG] Error general: {str(e)}")
+        debug_info.append(f"[DEBUG] Traceback: {traceback.format_exc()}")
+        
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "test_phrase": test_phrase,
+            "debug_info": debug_info,
+            "traceback": traceback.format_exc()
+        }), 500
         
         # Si no hay resultados, intentar una búsqueda más simple
         if not results:
