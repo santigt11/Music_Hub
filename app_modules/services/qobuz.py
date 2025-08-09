@@ -492,7 +492,50 @@ class QobuzDownloader:
             encoded_query = urllib.parse.quote(query)
             api_url = f"https://api.genius.com/search?q={encoded_query}"
             
-            print(f"[GENIUS API] Buscando en: {api_url}")
+            print(f"[GENIUS API] 🔍 Buscando en: {api_url}")
+            
+            response = self.session.get(api_url, headers=headers, timeout=10)
+            print(f"[GENIUS API] 📡 Response status: {response.status_code}")
+            
+            if response.status_code != 200:
+                print(f"[GENIUS API] ❌ Error {response.status_code}: {response.text[:500]}")
+                return []
+            
+            data = response.json()
+            hits = data.get('response', {}).get('hits', [])
+            print(f"[GENIUS API] 📊 Encontradas {len(hits)} canciones")
+            
+            if not hits:
+                print("[GENIUS API] ⚠️ Sin resultados de la API")
+                return []
+            
+            # Procesar resultados
+            results = []
+            for hit in hits[:limit]:
+                song = hit.get('result', {})
+                title = song.get('title', '')
+                artist = song.get('primary_artist', {}).get('name', '')
+                url = song.get('url', '')
+                
+                print(f"[GENIUS API] 🎵 Canción encontrada: '{title}' - '{artist}'")
+                
+                if title and artist:
+                    results.append({
+                        'title': title,
+                        'artist': artist,
+                        'url': url,
+                        'genius_id': song.get('id'),
+                        'source': 'genius_api'
+                    })
+            
+            print(f"[GENIUS API] ✅ Retornando {len(results)} resultados procesados")
+            return results
+            
+        except Exception as e:
+            print(f"[GENIUS API] 💥 Error en _try_genius_api: {str(e)}")
+            import traceback
+            print(f"[GENIUS API] 📋 Traceback: {traceback.format_exc()}")
+            return []
             print(f"[GENIUS API] Headers: {headers}")
             
             resp = self.session.get(api_url, headers=headers, timeout=15)

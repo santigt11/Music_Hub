@@ -43,25 +43,71 @@ def debug_env():
 @api_bp.route('/debug/lyrics-test')
 def debug_lyrics_test():
     """Endpoint para probar la funcionalidad de búsqueda por letras"""
+    import traceback
+    debug_info = []
+    
     try:
         test_phrase = "y si te digo que es para toda la vida pero no como esos"
-        print(f"[DEBUG] Iniciando test de búsqueda por letras...")
+        debug_info.append(f"[DEBUG] Iniciando test de búsqueda por letras con: '{test_phrase}'")
         
+        # Verificar configuración antes de la búsqueda
+        from ..config import GENIUS_TOKEN
+        debug_info.append(f"[DEBUG] Token disponible: {bool(GENIUS_TOKEN)}")
+        debug_info.append(f"[DEBUG] Token preview: {GENIUS_TOKEN[:20]}..." if GENIUS_TOKEN else "[DEBUG] No token")
+        
+        # Intentar la búsqueda
         results = downloader.search_by_lyrics(test_phrase, limit=1)
+        debug_info.append(f"[DEBUG] Búsqueda completada, resultados: {len(results)}")
+        
+        # Si no hay resultados, intentar una búsqueda más simple
+        if not results:
+            debug_info.append("[DEBUG] Sin resultados, intentando búsqueda simple...")
+            try:
+                # Probar directamente la API de Genius
+                import requests
+                import urllib.parse
+                
+                headers = {
+                    'Authorization': f'Bearer {GENIUS_TOKEN}',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+                
+                encoded_query = urllib.parse.quote("Robleis POV")
+                api_url = f"https://api.genius.com/search?q={encoded_query}"
+                
+                debug_info.append(f"[DEBUG] Probando API directa: {api_url}")
+                response = requests.get(api_url, headers=headers, timeout=5)
+                debug_info.append(f"[DEBUG] Response status: {response.status_code}")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    hits = data.get('response', {}).get('hits', [])
+                    debug_info.append(f"[DEBUG] API responde OK, hits: {len(hits)}")
+                else:
+                    debug_info.append(f"[DEBUG] API error: {response.text[:200]}")
+                    
+            except Exception as e:
+                debug_info.append(f"[DEBUG] Error en test directo: {str(e)}")
         
         return jsonify({
             "success": True,
             "test_phrase": test_phrase,
             "results_count": len(results),
             "results": results[:1] if results else [],
+            "debug_info": debug_info,
             "message": "Test de búsqueda por letras completado"
         })
+        
     except Exception as e:
-        print(f"[DEBUG] Error en test de búsqueda por letras: {str(e)}")
+        debug_info.append(f"[DEBUG] Error general: {str(e)}")
+        debug_info.append(f"[DEBUG] Traceback: {traceback.format_exc()}")
+        
         return jsonify({
             "success": False,
             "error": str(e),
-            "test_phrase": test_phrase
+            "test_phrase": test_phrase,
+            "debug_info": debug_info,
+            "traceback": traceback.format_exc()
         }), 500
 
 @api_bp.route('/token-info')
