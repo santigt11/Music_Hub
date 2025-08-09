@@ -182,7 +182,11 @@ async function performSearch() {
         console.log('Response data:', data);
         
         if (data.success) {
-            searchResults = data.results;
+            // Reordenar en cliente para priorizar resultados por letra
+            const byLyrics = (data.results || []).filter(r => r.found_by_lyrics);
+            const rest = (data.results || []).filter(r => !r.found_by_lyrics);
+            searchResults = [...byLyrics, ...rest];
+            console.log('Ordenados (lyrics primero):', searchResults.map(r => ({title: r.title, found_by_lyrics: r.found_by_lyrics, source: r.source})).slice(0, 3));
             displayResults(searchResults);
         } else {
             showError(data.error || 'Error en la búsqueda');

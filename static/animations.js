@@ -147,7 +147,8 @@ class AnimationManager {
 
     setupResultCardHovers() {
         document.addEventListener('mouseenter', (e) => {
-            if (e.target.closest('.result-item')) {
+            if (!(e.target instanceof Element)) return;
+            if (typeof e.target.closest === 'function' && e.target.closest('.result-item')) {
                 const card = e.target.closest('.result-item');
                 anime({
                     targets: card,
@@ -173,7 +174,8 @@ class AnimationManager {
         }, true);
 
         document.addEventListener('mouseleave', (e) => {
-            if (e.target.closest('.result-item')) {
+            if (!(e.target instanceof Element)) return;
+            if (typeof e.target.closest === 'function' && e.target.closest('.result-item')) {
                 const card = e.target.closest('.result-item');
                 anime({
                     targets: card,
@@ -201,7 +203,8 @@ class AnimationManager {
     setupButtonAnimations() {
         // Animación para botones de descarga
         document.addEventListener('mouseenter', (e) => {
-            if (e.target.classList.contains('download-btn') && !this.isMobile()) {
+            if (!(e.target instanceof Element)) return;
+            if (e.target.classList && e.target.classList.contains('download-btn') && !this.isMobile()) {
                 anime({
                     targets: e.target,
                     scale: 1.05,
@@ -213,7 +216,8 @@ class AnimationManager {
         }, true);
 
         document.addEventListener('mouseleave', (e) => {
-            if (e.target.classList.contains('download-btn') && !this.isMobile()) {
+            if (!(e.target instanceof Element)) return;
+            if (e.target.classList && e.target.classList.contains('download-btn') && !this.isMobile()) {
                 anime({
                     targets: e.target,
                     scale: 1,
@@ -226,7 +230,8 @@ class AnimationManager {
 
         // Animación de click para botones
         document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('download-btn') || e.target.classList.contains('search-btn')) {
+            if (!(e.target instanceof Element)) return;
+            if ((e.target.classList && e.target.classList.contains('download-btn')) || (e.target.classList && e.target.classList.contains('search-btn'))) {
                 const scaleFactor = this.isMobile() ? 0.92 : 0.95;
                 anime({
                     targets: e.target,
@@ -244,7 +249,8 @@ class AnimationManager {
 
         // Animación para tabs
         document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('tab-btn')) {
+            if (!(e.target instanceof Element)) return;
+            if (e.target.classList && e.target.classList.contains('tab-btn')) {
                 // Animar tab seleccionado
                 anime({
                     targets: e.target,

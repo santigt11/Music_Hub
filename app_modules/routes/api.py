@@ -38,6 +38,7 @@ def search():
         query = data.get('query', '')
         source = data.get('source', 'qobuz')
         mode = data.get('mode')  # permite 'lyrics'
+        logger.info("/search IN -> q='%s' src=%s mode=%s", query, source, mode)
         if not query:
             return jsonify({'success': False, 'error': 'Query vacío'}), 400
         
@@ -48,6 +49,7 @@ def search():
             # Primero buscar por letra si hay modo lyrics
             if mode == 'lyrics':
                 lyrics_results = downloader.search_by_lyrics(query, limit=1)
+                logger.info("/search LYRICS mode: frase='%s' -> lyrics_results=%d", query, len(lyrics_results))
                 for t in lyrics_results:
                     item = {
                         'id': t.get('id'),
@@ -62,6 +64,8 @@ def search():
                         if t.get(extra):
                             item[extra] = t.get(extra)
                     results.append(item)
+                if lyrics_results:
+                    logger.info("/search LYRICS first item: title='%s' source=%s genius=%s", results[0]['title'], results[0].get('source'), results[0].get('genius_match'))
             
             # Luego búsqueda normal
             tracks = downloader.search_tracks_with_locale(query, limit=15, force_latin=True)
@@ -127,6 +131,11 @@ def search():
                         'cover': track.get('album', {}).get('image', {}).get('small', ''),
                         'source': 'qobuz'
                     })
+        # Poner resultados por letra primero por claridad en UI
+        if results:
+            lyrics_first = [r for r in results if r.get('found_by_lyrics')] + [r for r in results if not r.get('found_by_lyrics')]
+            results = lyrics_first
+
         # Log básico de conteos para depuración
         try:
             logger.info(
@@ -138,6 +147,8 @@ def search():
                 len([r for r in results if not r.get('found_by_lyrics')]),
                 len(results),
             )
+            if results:
+                logger.info("/search OUT first item: title='%s' found_by_lyrics=%s source=%s", results[0].get('title'), results[0].get('found_by_lyrics'), results[0].get('source'))
         except Exception:
             pass
 
