@@ -56,7 +56,7 @@ def search():
                         'album': t.get('album', {}).get('title', 'Unknown'),
                         'duration': t.get('duration', 0),
                         'cover': t.get('album', {}).get('image', {}).get('small', ''),
-                        'source': 'qobuz'
+                        'source': t.get('source') or 'qobuz'
                     }
                     for extra in ['found_by_lyrics','genius_match','genius_url','matched_fragment','lyrics_fragment']:
                         if t.get(extra):

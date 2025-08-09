@@ -231,15 +231,14 @@ function displayResults(results) {
              <div class="result-cover-placeholder" style="display: none;">🎵</div>` :
             `<div class="result-cover-placeholder">🎵</div>`;
             
-        // Detectar si fue encontrado por búsqueda de letra
+        // Indicador visual para resultados obtenidos por letra
         let lyricsIndicator = '';
         if (result.found_by_lyrics) {
-            if (result.genius_match) {
-                lyricsIndicator = '<span class="lyrics-indicator genius" title="Encontrado por letra">🎤✨</span>';
-            } else {
-                lyricsIndicator = '<span class="lyrics-indicator" title="Encontrado por letra">🎤</span>';
-            }
+            const cls = result.genius_match ? 'lyrics-indicator genius' : 'lyrics-indicator';
+            lyricsIndicator = `<span class="${cls}" title="Encontrado por letra">🎤⭐</span>`;
         }
+        const isGeniusOnly = (!result.id) || result.source === 'genius';
+        const geniusLink = result.genius_url ? `<a class="genius-link" href="${escapeHtml(result.genius_url)}" target="_blank" rel="noopener">Ver en Genius</a>` : '';
             
         return `
             <div class="result-item" data-index="${index}">
@@ -254,29 +253,35 @@ function displayResults(results) {
                     <div class="result-artist">${escapeHtml(result.artist)}</div>
                     ${result.album ? `<div class="result-album">${escapeHtml(result.album)}</div>` : ''}
                     ${result.duration ? `<div class="result-duration">${formatDuration(result.duration)}</div>` : ''}
+                    ${isGeniusOnly && geniusLink ? `<div class="result-genius">${geniusLink}</div>` : ''}
                 </div>
                 <div class="result-actions">
-                    <button class="preview-btn" onclick="togglePreview(${index}, '${escapeHtml(result.id)}')">
-                        <span class="preview-icon">▶</span>
-                        <span class="preview-text">Preview</span>
-                    </button>
-                    <button class="download-btn" onclick="openDownloadModal(${index})">
-                        <span class="download-icon">⬇</span>
-                        Descargar
-                    </button>
+                    ${isGeniusOnly ? `
+                        <button class="preview-btn" style="opacity:.5;pointer-events:none" title="No disponible para resultados solo de Genius">
+                            <span class="preview-icon">▶</span>
+                            <span class="preview-text">Preview</span>
+                        </button>
+                        <button class="download-btn" style="opacity:.5;pointer-events:none" title="No disponible para resultados solo de Genius">
+                            <span class="download-icon">⬇</span>
+                            Descargar
+                        </button>
+                    ` : `
+                        <button class="preview-btn" onclick="togglePreview(${index}, '${escapeHtml(result.id)}')">
+                            <span class="preview-icon">▶</span>
+                            <span class="preview-text">Preview</span>
+                        </button>
+                        <button class="download-btn" onclick="openDownloadModal(${index})">
+                            <span class="download-icon">⬇</span>
+                            Descargar
+                        </button>
+                    `}
                 </div>
             </div>
         `;
     }).join('');
     
-    resultsContainer.innerHTML = resultsHTML + `
-        <div class="load-more-container">
-            <button class="load-more-btn" onclick="loadMoreResults()">
-                <span class="load-more-icon">⬇</span>
-                Cargar más resultados
-            </button>
-        </div>
-    `;
+    // Renderizar solo los resultados; se elimina el botón de "Cargar más resultados"
+    resultsContainer.innerHTML = resultsHTML;
     
     
     // Animar resultados con Anime.js

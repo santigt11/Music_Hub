@@ -590,161 +590,108 @@ class QobuzDownloader:
             return []
 
     def search_by_lyrics(self, query: str, limit: int = 1) -> List[Dict[str, Any]]:
-        """Busca canciones por fragmento de letra usando únicamente resultados validados por Genius.
+        """Búsqueda mínima por letra basada en la lógica del test:
 
-        Nota: si no hay un match claro en Qobuz para la canción validada por letras, NO devuelve
-        un resultado por letra alternativo. En ese caso, la UI mostrará sólo la búsqueda normal.
+        - Busca candidatos en Genius con la frase original (API; fallback scraping)
+        - Descarga la letra y verifica que el fragmento LIMPIO esté contenido
+        - Intenta mapear a Qobuz con una búsqueda simple por "<title> <artist>"
+        - Si no hay match en Qobuz, devuelve un resultado tipo 'genius' (id=None)
         """
         try:
             print(f"[LYRICS] Buscando: '{query}'")
-            
-            # Limpiar la consulta
+
+            # Limpiar sólo para verificación de inclusión
             clean_query = self._clean_lyrics_text(query)
             if len(clean_query.split()) < 3:
                 return []
-            
-            # Intentar búsqueda real en Genius (con verificación de letras y mapeo estricto a Qobuz)
-            results = self._search_genius_for_lyrics(clean_query, limit)
-            
+
+            results = self._search_genius_for_lyrics(original_query=query, clean_query=clean_query, limit=limit)
+
             # Marcar metadatos si hay resultados
             for result in results:
                 result['found_by_lyrics'] = True
                 result['lyrics_fragment'] = query[:100]
                 result['matched_fragment'] = query[:100]
-            
+
             print(f"[LYRICS] Retornando {len(results)} resultados")
             return results[:limit]
-            
+
         except Exception as e:
             print(f"[LYRICS] Error en search_by_lyrics: {e}")
             return []
     
-    def _search_genius_for_lyrics(self, clean_query: str, limit: int) -> List[Dict[str, Any]]:
-        """Búsqueda real en Genius con verificación de letras usando API oficial y mapeo estricto a Qobuz."""
+    def _search_genius_for_lyrics(self, original_query: str, clean_query: str, limit: int) -> List[Dict[str, Any]]:
+        """Implementación simple: usa query original para buscar en Genius, verifica inclusión de clean_query
+        en las letras y mapea a Qobuz con una búsqueda directa por título + artista.
+        """
         try:
-            # Buscar candidatos en Genius usando API oficial
-            candidates = self._search_genius_api(clean_query, limit=10)
-
-            def jaccard(a_tokens: List[str], b_tokens: List[str]) -> float:
-                a_set, b_set = set(a_tokens), set(b_tokens)
-                if not a_set or not b_set:
-                    return 0.0
-                inter = len(a_set & b_set)
-                union = len(a_set | b_set)
-                return inter / union if union else 0.0
+            # 1) Candidatos desde API oficial; si falla, scraping
+            candidates = self._search_genius_api(original_query, limit=10)
+            if not candidates:
+                candidates = self._try_genius_scraping(original_query, limit=10)
 
             results: List[Dict[str, Any]] = []
-            for candidate in candidates[:5]:  # Solo verificar los primeros 5
+            for cand in candidates[:5]:
                 try:
-                    # Descargar letras
-                    lyrics = self._fetch_genius_lyrics(candidate['url'])
+                    title = cand.get('title') or ''
+                    artist = cand.get('artist') or ''
+                    url = cand.get('url') or ''
+                    if not (title and url):
+                        continue
+
+                    # 2) Descargar letras y validar fragmento
+                    lyrics = self._fetch_genius_lyrics(url)
                     if not lyrics:
                         continue
-
-                    # Verificar coincidencia exacta del fragmento limpiado
-                    clean_lyrics = self._clean_lyrics_text(lyrics)
-                    if clean_query not in clean_lyrics:
+                    cl = self._clean_lyrics_text(lyrics)
+                    if clean_query not in cl:
                         continue
 
-                    print(f"[LYRICS] ¡Coincidencia de letra en: {candidate['title']} - {candidate['artist']}!")
+                    print(f"[LYRICS] ✓ Letra confirmada para: {title} - {artist}")
 
-                    # Preparar términos limpios para matching
-                    genius_title_clean = self._clean_lyrics_text(candidate['title'])
-                    genius_artist_clean = self._clean_lyrics_text(candidate['artist'])
-                    genius_title_tokens = [t for t in genius_title_clean.split() if t]
-                    genius_artist_tokens = [t for t in genius_artist_clean.split() if t]
+                    # 3) Intentar mapear a Qobuz con coincidencia EXACTA de título
+                    q_query = f"{title} {artist}".strip()
+                    # Buscar solo 5 resultados en Qobuz como pediste
+                    q_tracks = self.search_tracks_with_locale(q_query, limit=5, force_latin=True) or []
 
-                    # Intentar diferentes queries en Qobuz para mejorar el mapeo
-                    q_queries = [
-                        f"{candidate['title']} {candidate['artist']}",
-                        f"{candidate['artist']} {candidate['title']}"
-                    ]
-
-                    seen_ids = set()
-                    q_matches: List[Dict[str, Any]] = []
-                    for q in q_queries:
-                        qobuz_results = self.search_with_similarity(q, limit=5)
-                        for track in qobuz_results:
-                            tid = track.get('id')
-                            if tid in seen_ids:
-                                continue
-                            seen_ids.add(tid)
-
-                            q_title = track.get('title', '')
-                            q_artist = track.get('performer', {}).get('name', '')
-                            q_title_clean = self._clean_lyrics_text(q_title)
-                            q_artist_clean = self._clean_lyrics_text(q_artist)
-                            q_title_tokens = [t for t in q_title_clean.split() if t]
-                            q_artist_tokens = [t for t in q_artist_clean.split() if t]
-
-                            # Reglas de matching estricto: artista debe coincidir claramente
-                            artist_ratio = jaccard(genius_artist_tokens, q_artist_tokens)
-                            artist_ok = (
-                                genius_artist_clean == q_artist_clean or
-                                genius_artist_clean in q_artist_clean or
-                                q_artist_clean in genius_artist_clean or
-                                artist_ratio >= 0.6
-                            )
-
-                            # Matching de título: permitir exacto, inclusión o jaccard alto
-                            title_ratio = jaccard(genius_title_tokens, q_title_tokens)
-                            title_ok = (
-                                genius_title_clean == q_title_clean or
-                                genius_title_clean in q_title_clean or
-                                q_title_clean in genius_title_clean or
-                                title_ratio >= 0.6
-                            )
-
-                            if artist_ok and title_ok:
-                                print(f"[LYRICS]  ✅ Match Qobuz: {q_title} - {q_artist} (artist_ratio={artist_ratio:.2f}, title_ratio={title_ratio:.2f})")
-                                q_matches.append(track)
-                            else:
-                                print(f"[LYRICS]  ❌ Descarta: {q_title} - {q_artist} (artist_ratio={artist_ratio:.2f}, title_ratio={title_ratio:.2f})")
-
-                    # Ordenar matches por suma de ratios y elegir los primeros
-                    def score_track(track: Dict[str, Any]) -> float:
-                        q_title = self._clean_lyrics_text(track.get('title', ''))
-                        q_artist = self._clean_lyrics_text(track.get('performer', {}).get('name', ''))
-                        t_ratio = jaccard(genius_title_clean.split(), q_title.split())
-                        a_ratio = jaccard(genius_artist_clean.split(), q_artist.split())
-                        return t_ratio + a_ratio
-
-                    q_matches.sort(key=score_track, reverse=True)
-                    for track in q_matches:
-                        t_copy = track.copy()
-                        t_copy['genius_match'] = True
-                        t_copy['genius_url'] = candidate.get('url')
-                        # Asegurar fuente
-                        t_copy['source'] = 'qobuz'
-                        results.append(t_copy)
-                        if len(results) >= limit:
+                    # Coincidencia exacta de título (ni más, ni menos)
+                    mapped = None
+                    for tr in q_tracks:
+                        q_title = (tr.get('title') or '').strip()
+                        if q_title == title.strip():
+                            mapped = tr
                             break
 
-                    # Si no hubo match en Qobuz pero la letra coincide, devolver un resultado 'genius'
-                    if not q_matches and len(results) < limit:
+                    if mapped:
+                        m = mapped.copy()
+                        m['genius_match'] = True
+                        m['genius_url'] = url
+                        m['source'] = 'qobuz'
+                        results.append(m)
+                    else:
                         results.append({
                             'id': None,
-                            'title': candidate['title'],
-                            'performer': {'name': candidate['artist']},
+                            'title': title,
+                            'performer': {'name': artist},
                             'album': {},
                             'duration': 0,
                             'cover': '',
                             'source': 'genius',
                             'genius_match': True,
-                            'genius_url': candidate.get('url'),
+                            'genius_url': url,
                         })
 
                     if len(results) >= limit:
                         break
 
                 except Exception as e:
-                    print(f"[LYRICS] Error verificando {candidate.get('title')}: {e}")
+                    print(f"[LYRICS] Error verificando candidato Genius: {e}")
                     continue
 
             return results
 
         except Exception as e:
-            print(f"[LYRICS] Error en búsqueda Genius: {e}")
+            print(f"[LYRICS] Error en búsqueda Genius (simple): {e}")
             return []
 
     def _search_genius_api(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
