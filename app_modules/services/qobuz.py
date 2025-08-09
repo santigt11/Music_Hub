@@ -374,18 +374,37 @@ class QobuzDownloader:
     def _fetch_genius_lyrics(self, url: str) -> str:
         """Obtiene la letra completa de una página de Genius"""
         try:
+            # Headers más convincentes para evitar bloqueo
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Connection': 'keep-alive'
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language': 'en-US,en;q=0.9,es;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Cache-Control': 'max-age=0',
+                'DNT': '1',
+                'Sec-GPC': '1'
             }
             
             print(f"[FETCH] Descargando letras de: {url}")
             
-            r = self.session.get(url, headers=headers, timeout=15)
+            # Agregar delay para parecer más humano
+            import time
+            time.sleep(0.5)
+            
+            r = self.session.get(url, headers=headers, timeout=10)
+            print(f"[FETCH] HTTP {r.status_code} - Headers enviados: User-Agent, Accept, etc.")
+            
             if r.status_code != 200:
                 print(f"[FETCH] Error HTTP {r.status_code}")
+                if r.status_code == 403:
+                    print(f"[FETCH] ⛔ Genius está bloqueando requests desde Vercel")
+                    print(f"[FETCH] 💡 Esto es normal en entornos serverless")
                 return ''
             
             html = r.text
@@ -733,6 +752,37 @@ class QobuzDownloader:
                     
                     if not lyrics:
                         print(f"[LYRICS] ❌ No se pudieron descargar letras para '{title}'")
+                        print(f"[LYRICS] 🔄 Intentando mapeo directo sin verificación de letras...")
+                        
+                        # FALLBACK: Mapear directamente sin verificar letras
+                        # Esto es útil cuando Genius bloquea requests en Vercel
+                        q_query = f"{title} {artist}".strip()
+                        print(f"[LYRICS] 🔍 Mapeo directo en Qobuz: '{q_query}'")
+                        
+                        q_tracks = self.search_tracks_with_locale(q_query, limit=5, force_latin=True) or []
+                        print(f"[LYRICS] 📊 Qobuz encontró {len(q_tracks)} tracks")
+                        
+                        # Mapeo por título exacto
+                        mapped = None
+                        for tr in q_tracks:
+                            q_title = (tr.get('title') or '').strip()
+                            if q_title == title.strip():
+                                mapped = tr
+                                print(f"[LYRICS] 🎯 Match directo encontrado: '{q_title}'")
+                                break
+                        
+                        if mapped:
+                            print(f"[LYRICS] ✅ Mapeo directo exitoso: '{mapped.get('title')}'")
+                            m = mapped.copy()
+                            m['genius_match'] = True
+                            m['genius_url'] = url
+                            m['source'] = 'qobuz'
+                            m['lyrics_verified'] = False  # Indicar que no se verificaron letras
+                            results.append(m)
+                            break  # Solo necesitamos uno
+                        else:
+                            print(f"[LYRICS] ❌ Sin mapeo directo para '{title}'")
+                        
                         continue
                         
                     print(f"[LYRICS] ✅ Letras descargadas: {len(lyrics)} caracteres")
@@ -744,9 +794,7 @@ class QobuzDownloader:
                         print(f"[LYRICS] ❌ Fragmento '{clean_query[:30]}...' no encontrado en letras")
                         continue
 
-                    print(f"[LYRICS] ✅ Fragmento confirmado en: {title} - {artist}")
-
-                    # 3) Intentar mapear a Qobuz con coincidencia EXACTA de título
+                    print(f"[LYRICS] ✅ Fragmento confirmado en: {title} - {artist}")                    # 3) Intentar mapear a Qobuz con coincidencia EXACTA de título
                     q_query = f"{title} {artist}".strip()
                     print(f"[LYRICS] 🔍 Buscando en Qobuz: '{q_query}'")
                     
