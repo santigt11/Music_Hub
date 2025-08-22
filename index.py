@@ -1,63 +1,20 @@
-from flask import Flask, request
+"""
+Punto de entrada para Vercel
+"""
 import os
 
 # Configurar variables de entorno para Vercel
 os.environ['VERCEL'] = '1'
 
-# Importar la aplicación
+# Importar la aplicación Flask
 from app import app
 
-# Handler para Vercel - Formato correcto para serverless functions
-def handler(event, context):
-    """
-    Handler para Vercel serverless functions
-    """
-    try:
-        # Crear un contexto de aplicación Flask
-        with app.app_context():
-            # Usar el test client para procesar la request
-            with app.test_client() as client:
-                # Extraer información del evento
-                method = event.get('httpMethod', 'GET')
-                path = event.get('path', '/')
-                headers = event.get('headers', {})
-                body = event.get('body', '')
-                query_params = event.get('queryStringParameters') or {}
-                
-                # Construir la URL con query parameters
-                if query_params:
-                    query_string = '&'.join([f"{k}={v}" for k, v in query_params.items()])
-                    path = f"{path}?{query_string}"
-                
-                # Hacer la request
-                if method == 'GET':
-                    response = client.get(path, headers=headers)
-                elif method == 'POST':
-                    response = client.post(path, data=body, headers=headers)
-                elif method == 'PUT':
-                    response = client.put(path, data=body, headers=headers)
-                elif method == 'DELETE':
-                    response = client.delete(path, headers=headers)
-                else:
-                    response = client.get(path, headers=headers)
-                
-                # Formatear respuesta para Vercel
-                return {
-                    'statusCode': response.status_code,
-                    'headers': dict(response.headers),
-                    'body': response.get_data(as_text=True)
-                }
-                
-    except Exception as e:
-        print(f"Error in handler: {str(e)}")
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
-            'body': f'{{"error": "Internal server error: {str(e)}"}}'
-        }
+# Esta es la aplicación que Vercel ejecutará
+# Vercel espera una variable llamada 'app' o 'application'
+application = app
 
-# Exportar la app también
-app_instance = app
-
+# Para desarrollo local
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Configurar para desarrollo local
+    os.environ['FLASK_ENV'] = 'development'
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
