@@ -3,7 +3,7 @@
   "builds": [
     {
       "src": "index.py",
-      "use": "@vercel/python@3.9.15"
+      "use": "@vercel/python"
     }
   ],
   "routes": [
