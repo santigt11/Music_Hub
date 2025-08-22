@@ -439,24 +439,25 @@ async function checkTokenStatus() {
                 // Verificar información de suscripción primero
                 if (info.suscripcion && info.suscripcion.dias_restantes !== undefined) {
                     const dias = info.suscripcion.dias_restantes;
-                    const estado = info.suscripcion.estado_detallado;
+                    const tiempoRestante = info.suscripcion.tiempo_restante;
+                    const estadoTiempo = info.suscripcion.estado_tiempo;
                     
-                    if (info.suscripcion.expirado || dias < 0) {
+                    if (estadoTiempo === 'expirado' || dias < 0) {
                         tokenStatus.className = 'token-status expired';
                         tokenIcon.textContent = '❌';
-                        tokenText.textContent = `Suscripción expirada (hace ${Math.abs(dias)} días)`;
+                        tokenText.textContent = `Suscripción expirada`;
                     } else if (dias <= 7) {
                         tokenStatus.className = 'token-status warning';
                         tokenIcon.textContent = '⚠️';
-                        tokenText.textContent = `Suscripción expira en ${dias} días`;
+                        tokenText.textContent = `Expira en ${tiempoRestante}`;
                     } else if (dias <= 30) {
                         tokenStatus.className = 'token-status warning';
                         tokenIcon.textContent = '⚡';
-                        tokenText.textContent = `Suscripción expira en ${dias} días`;
+                        tokenText.textContent = `Expira en ${tiempoRestante}`;
                     } else {
                         tokenStatus.className = 'token-status valid';
                         tokenIcon.textContent = '✅';
-                        tokenText.textContent = `Suscripción activa (${dias} días restantes)`;
+                        tokenText.textContent = `Activa - ${tiempoRestante} restantes`;
                     }
                 } else {
                     // Token válido pero sin información de suscripción
@@ -480,8 +481,11 @@ async function checkTokenStatus() {
                 }
                 if (info.suscripcion) {
                     tooltipText += `\nSuscripción: ${info.suscripcion.tipo}`;
-                    if (info.suscripcion.fecha_expiracion_legible) {
-                        tooltipText += `\nExpira: ${info.suscripcion.fecha_expiracion_legible}`;
+                    if (info.suscripcion.tiempo_restante) {
+                        tooltipText += `\nTiempo restante: ${info.suscripcion.tiempo_restante}`;
+                    }
+                    if (info.suscripcion.fecha_fin_legible) {
+                        tooltipText += `\nExpira: ${info.suscripcion.fecha_fin_legible}`;
                     }
                     tooltipText += `\nRenovación automática: ${info.suscripcion.renovacion_automatica ? 'Sí' : 'No'}`;
                 }
@@ -923,4 +927,197 @@ function formatDuration(seconds) {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+// ====== AUTO RENEWAL FUNCTIONS ======
+
+function checkAutoRenewalStatus() {
+    fetch('/api/auto-renewal/status')
+        .then(response => response.json())
+        .then(data => {
+            updateAutoRenewalUI(data);
+        })
+        .catch(error => {
+            console.error('Error checking auto renewal status:', error);
+            updateAutoRenewalUI({
+                success: false,
+                needs_renewal: false,
+                message: 'Error verificando estado'
+            });
+        });
+}
+
+function updateAutoRenewalUI(status) {
+    const renewalStatus = document.getElementById('renewalStatus');
+    const renewalIcon = renewalStatus.querySelector('.renewal-icon');
+    const renewalText = renewalStatus.querySelector('.renewal-text');
+    
+    // Remover clases anteriores
+    renewalStatus.classList.remove('needs-renewal', 'error');
+    
+    if (status.success === false) {
+        renewalStatus.classList.add('error');
+        renewalIcon.textContent = '❌';
+        renewalText.textContent = status.message || 'Error en sistema de renovación';
+    } else if (status.needs_renewal) {
+        renewalStatus.classList.add('needs-renewal');
+        renewalIcon.textContent = '⚠️';
+        let text = `Renovación necesaria (${status.days_remaining} días restantes)`;
+        if (status.is_vercel) {
+            text += ' - Vercel';
+        }
+        renewalText.textContent = text;
+    } else {
+        renewalIcon.textContent = '🔄';
+        let text = `Sistema activo (${status.days_remaining} días restantes)`;
+        if (status.is_vercel) {
+            text += ' - Vercel';
+        }
+        renewalText.textContent = text;
+    }
+}
+
+function checkRenewal() {
+    const checkBtn = document.getElementById('checkRenewalBtn');
+    checkBtn.disabled = true;
+    checkBtn.textContent = 'Verificando...';
+    
+    fetch('/api/auto-renewal/check')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification(data.message, 'success');
+                // Actualizar estado del token después de verificar
+                setTimeout(() => {
+                    checkTokenStatus();
+                    checkAutoRenewalStatus();
+                }, 1000);
+            } else {
+                showNotification(data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error checking renewal:', error);
+            showNotification('Error verificando renovación', 'error');
+        })
+        .finally(() => {
+            checkBtn.disabled = false;
+            checkBtn.textContent = 'Verificar renovación';
+        });
+}
+
+function forceRenewal() {
+    const forceBtn = document.getElementById('forceRenewalBtn');
+    forceBtn.disabled = true;
+    forceBtn.textContent = 'Renovando...';
+    
+    fetch('/api/auto-renewal/force', {
+        method: 'POST'
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification(data.message, 'success');
+                
+                // Manejar respuesta específica para Vercel
+                if (data.is_vercel && data.vercel_instructions) {
+                    showVercelInstructions(data.vercel_instructions, data.local_storage_data);
+                } else if (data.new_credentials) {
+                    // Mostrar información de las nuevas credenciales para entorno local
+                    const creds = data.new_credentials;
+                    const info = `Nuevas credenciales:\n` +
+                               `App ID: ${creds.app_id}\n` +
+                               `User ID: ${creds.user_id}\n` +
+                               `Token: ${creds.token_preview}`;
+                    setTimeout(() => alert(info), 500);
+                }
+                
+                // Actualizar estado después de renovar
+                setTimeout(() => {
+                    checkTokenStatus();
+                    checkAutoRenewalStatus();
+                }, 2000);
+            } else {
+                showNotification(data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error forcing renewal:', error);
+            showNotification('Error forzando renovación', 'error');
+        })
+        .finally(() => {
+            forceBtn.disabled = false;
+            forceBtn.textContent = 'Renovar ahora';
+        });
+}
+
+// Inicializar eventos de renovación automática
+document.addEventListener('DOMContentLoaded', function() {
+    // Verificar estado de renovación automática al cargar
+    checkAutoRenewalStatus();
+    
+    // Configurar botones
+    const checkBtn = document.getElementById('checkRenewalBtn');
+    const forceBtn = document.getElementById('forceRenewalBtn');
+    
+    if (checkBtn) {
+        checkBtn.addEventListener('click', checkRenewal);
+    }
+    
+    if (forceBtn) {
+        forceBtn.addEventListener('click', function() {
+            if (confirm('¿Estás seguro de que quieres forzar la renovación? Esto buscará nuevas credenciales en arldeemix.com')) {
+                forceRenewal();
+            }
+        });
+    }
+    
+    // Verificar estado cada 30 minutos
+    setInterval(() => {
+        checkAutoRenewalStatus();
+    }, 30 * 60 * 1000);
+});
+
+// Función para mostrar instrucciones de Vercel
+function showVercelInstructions(instructions, localStorageData) {
+    // Crear modal con instrucciones para Vercel
+    const modal = document.createElement('div');
+    modal.className = 'vercel-modal';
+    modal.innerHTML = `
+        <div class="vercel-modal-content">
+            <div class="vercel-modal-header">
+                <h3>🚀 Credenciales encontradas para Vercel</h3>
+                <button class="vercel-modal-close">&times;</button>
+            </div>
+            <div class="vercel-modal-body">
+                <pre class="vercel-instructions">${instructions}</pre>
+                <div class="vercel-actions">
+                    <button class="btn-copy-instructions">📋 Copiar instrucciones</button>
+                    <button class="btn-save-local">💾 Guardar en navegador</button>
+                    <a href="https://vercel.com/dashboard" target="_blank" class="btn-vercel-dashboard">
+                        🔗 Abrir Vercel Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Event listeners para el modal
+    modal.querySelector('.vercel-modal-close').onclick = () => modal.remove();
+    modal.querySelector('.btn-copy-instructions').onclick = () => {
+        navigator.clipboard.writeText(instructions).then(() => {
+            showNotification('Instrucciones copiadas al portapapeles', 'success');
+        });
+    };
+    modal.querySelector('.btn-save-local').onclick = () => {
+        localStorage.setItem('qobuz_backup_credentials', localStorageData);
+        showNotification('Credenciales guardadas en el navegador como respaldo', 'success');
+    };
+    
+    // Cerrar modal al hacer click fuera
+    modal.onclick = (e) => {
+        if (e.target === modal) modal.remove();
+    };
 }

@@ -927,6 +927,209 @@ body {
     font-weight: 500;
 }
 
+/* Auto Renewal Section */
+.auto-renewal-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.renewal-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    opacity: 0.7;
+    padding: 6px 12px;
+    border-radius: 15px;
+    background: rgba(127, 176, 105, 0.1);
+    border: 1px solid rgba(127, 176, 105, 0.2);
+    color: var(--success);
+}
+
+.renewal-status.needs-renewal {
+    background: rgba(230, 181, 102, 0.1);
+    border-color: rgba(230, 181, 102, 0.3);
+    color: var(--warning);
+}
+
+.renewal-status.error {
+    background: rgba(214, 107, 107, 0.1);
+    border-color: rgba(214, 107, 107, 0.3);
+    color: var(--error);
+}
+
+.renewal-controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.btn-small {
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition);
+    font-weight: 500;
+}
+
+.btn-small:hover {
+    transform: translateY(-1px);
+    color: var(--text-primary);
+}
+
+.btn-small.btn-secondary {
+    border-color: rgba(139, 115, 85, 0.3);
+    background: rgba(139, 115, 85, 0.1);
+}
+
+.btn-small.btn-secondary:hover {
+    background: rgba(139, 115, 85, 0.2);
+    border-color: rgba(139, 115, 85, 0.5);
+}
+
+.btn-small.btn-warning {
+    border-color: rgba(230, 181, 102, 0.3);
+    background: rgba(230, 181, 102, 0.1);
+    color: var(--warning);
+}
+
+.btn-small.btn-warning:hover {
+    background: rgba(230, 181, 102, 0.2);
+    border-color: rgba(230, 181, 102, 0.5);
+}
+
+.btn-small:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.renewal-icon {
+    font-size: 0.9rem;
+}
+
+.renewal-text {
+    font-weight: 500;
+}
+
+/* Vercel Modal */
+.vercel-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(4px);
+}
+
+.vercel-modal-content {
+    background: var(--surface);
+    border-radius: var(--border-radius);
+    max-width: 90%;
+    max-height: 90%;
+    width: 600px;
+    box-shadow: var(--shadow-hover);
+    border: 1px solid var(--border);
+    overflow: hidden;
+}
+
+.vercel-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(139, 115, 85, 0.1);
+}
+
+.vercel-modal-header h3 {
+    margin: 0;
+    color: var(--primary-light);
+}
+
+.vercel-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition);
+    padding: 5px;
+    border-radius: 4px;
+}
+
+.vercel-modal-close:hover {
+    background: rgba(214, 107, 107, 0.2);
+    color: var(--error);
+}
+
+.vercel-modal-body {
+    padding: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.vercel-instructions {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 15px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    margin-bottom: 15px;
+    color: var(--text-primary);
+}
+
+.vercel-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.btn-copy-instructions,
+.btn-save-local,
+.btn-vercel-dashboard {
+    padding: 10px 16px;
+    border: 1px solid var(--primary-color);
+    background: rgba(139, 115, 85, 0.1);
+    color: var(--primary-light);
+    text-decoration: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: var(--transition);
+    font-size: 0.9rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-copy-instructions:hover,
+.btn-save-local:hover,
+.btn-vercel-dashboard:hover {
+    background: rgba(139, 115, 85, 0.2);
+    border-color: var(--primary-light);
+    transform: translateY(-1px);
+}
+
 /* Utility Classes */
 .hidden {
     display: none !important;

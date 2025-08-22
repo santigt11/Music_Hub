@@ -92,7 +92,8 @@ def calculate_time_remaining(end_date: Optional[any]) -> Dict[str, Any]:
 
 def get_token_info(token: Optional[str] = None) -> Dict[str, Any]:
     if not token:
-        token = QOBUZ_TOKEN
+        from ..config import get_current_token
+        token = get_current_token()
     try:
         downloader = get_downloader()
         user_info = downloader.get_user_info(token)
@@ -114,13 +115,17 @@ def get_token_info(token: Optional[str] = None) -> Dict[str, Any]:
                 end_date = subscription.get('end_date')
                 tiempo_info = calculate_time_remaining(end_date)
                 
+                # Determinar estado basado en la información disponible
+                is_canceled = subscription.get('is_canceled', False)
+                estado_sub = 'Cancelada' if is_canceled else 'Activa'
+                
                 info['suscripcion'] = {
                     'tipo': subscription.get('offer', 'No disponible'),
-                    'estado': subscription.get('status', 'No disponible'),
+                    'estado': estado_sub,
                     'inicio': subscription.get('start_date'),
                     'fin': subscription.get('end_date'),
                     'periodo': subscription.get('periodicity', 'No disponible'),
-                    'renovacion_automatica': subscription.get('is_recurring', False),
+                    'renovacion_automatica': not is_canceled,  # Si no está cancelada, se renueva
                     'tiempo_restante': tiempo_info['tiempo_restante'],
                     'estado_tiempo': tiempo_info['estado'],
                     'fecha_fin_legible': tiempo_info.get('fecha_fin_legible'),
@@ -130,10 +135,11 @@ def get_token_info(token: Optional[str] = None) -> Dict[str, Any]:
             
             credential = user_info.get('credential', {})
             if credential:
+                params = credential.get('parameters', {})
                 info['calidad'] = {
-                    'nivel': credential.get('parameters', {}).get('lossy_streaming', 'No disponible'),
-                    'calidad_maxima': credential.get('parameters', {}).get('lossless_streaming', 'No disponible'),
-                    'hires_disponible': credential.get('parameters', {}).get('hires_streaming', False)
+                    'nivel': params.get('lossy_streaming', False),
+                    'calidad_maxima': params.get('lossless_streaming', False),
+                    'hires_disponible': params.get('hires_streaming', False)
                 }
             return info
         return {'token_valido': False, 'error': 'No se pudo obtener información del usuario'}
@@ -156,4 +162,88 @@ def get_token_info(token: Optional[str] = None) -> Dict[str, Any]:
             pass
         return info
 
-__all__ = ["get_token_info", "calculate_time_remaining"]
+
+def format_token_info_display(token_info: Dict[str, Any]) -> str:
+    """Formatea la información del token para mostrar de manera visual"""
+    if not token_info.get('token_valido'):
+        return f"❌ Token inválido: {token_info.get('error', 'Error desconocido')}"
+    
+    lines = []
+    lines.append("✅ Token válido")
+    lines.append(f"Tipo: {token_info.get('tipo', 'No disponible')}")
+    lines.append("")
+    
+    # Información del usuario
+    usuario = token_info.get('usuario', {})
+    if usuario:
+        lines.append("👤 USUARIO:")
+        lines.append(f"  Email: {usuario.get('email', 'No disponible')}")
+        nombre = usuario.get('nombre', '')
+        apellido = usuario.get('apellido', '')
+        nombre_completo = f"{nombre} {apellido}".strip()
+        lines.append(f"  Nombre: {nombre_completo if nombre_completo else 'No disponible'}")
+        lines.append(f"  País: {usuario.get('pais', 'No disponible')}")
+        lines.append(f"  ID: {usuario.get('id', 'No disponible')}")
+        lines.append("")
+    
+    # Información de suscripción
+    suscripcion = token_info.get('suscripcion', {})
+    if suscripcion:
+        lines.append("💳 SUSCRIPCIÓN:")
+        lines.append(f"  Tipo: {suscripcion.get('tipo', 'No disponible')}")
+        estado = suscripcion.get('estado', 'No disponible')
+        lines.append(f"  Estado: {estado}")
+        
+        # Tiempo restante
+        tiempo_restante = suscripcion.get('tiempo_restante')
+        estado_tiempo = suscripcion.get('estado_tiempo')
+        fecha_fin = suscripcion.get('fecha_fin_legible')
+        
+        if tiempo_restante and estado_tiempo:
+            if estado_tiempo == 'activo':
+                lines.append(f"  ⏰ Tiempo restante: {tiempo_restante}")
+                if fecha_fin:
+                    lines.append(f"  📅 Fecha de expiración: {fecha_fin}")
+            elif estado_tiempo == 'expirado':
+                lines.append(f"  ⏰ Estado: EXPIRADO")
+                if fecha_fin:
+                    lines.append(f"  📅 Expiró el: {fecha_fin}")
+            else:
+                lines.append(f"  📅 Fecha de expiración: {tiempo_restante}")
+        else:
+            lines.append(f"  📅 Fecha de expiración: No disponible")
+        
+        renovacion = suscripcion.get('renovacion_automatica', False)
+        lines.append(f"  🔄 Renovación automática: {'Sí' if renovacion else 'No'}")
+        
+        periodo = suscripcion.get('periodo')
+        if periodo and periodo != 'No disponible':
+            periodo_es = {
+                'monthly': 'Mensual',
+                'yearly': 'Anual',
+                'quarterly': 'Trimestral'
+            }.get(periodo, periodo)
+            lines.append(f"  📊 Período: {periodo_es}")
+        
+        lines.append("")
+    
+    # Información de calidad
+    calidad = token_info.get('calidad', {})
+    if calidad:
+        lines.append("🎵 CALIDAD DISPONIBLE:")
+        nivel = calidad.get('nivel')
+        if nivel is not None:
+            lines.append(f"  MP3: {'Sí' if nivel else 'No'}")
+        
+        calidad_max = calidad.get('calidad_maxima')
+        if calidad_max is not None:
+            lines.append(f"  FLAC: {'Sí' if calidad_max else 'No'}")
+        
+        hires = calidad.get('hires_disponible')
+        if hires is not None:
+            lines.append(f"  Hi-Res: {'Sí' if hires else 'No'}")
+    
+    return "\n".join(lines)
+
+
+__all__ = ["get_token_info", "calculate_time_remaining", "format_token_info_display"]

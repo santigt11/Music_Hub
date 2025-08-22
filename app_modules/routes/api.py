@@ -6,11 +6,13 @@ funcionalidades avanzadas (lyrics, locale forcing, matching extendido)."""
 from __future__ import annotations
 from flask import Blueprint, request, jsonify, send_file
 import os, tempfile, time, hashlib, logging
+from datetime import datetime
 import requests
 from ..app_factory import get_downloader
 from ..config import FLASK_DEBUG
 from ..utils.metadata import add_metadata_to_file
-from ..utils.token import get_token_info
+from ..utils.token import get_token_info, format_token_info_display
+from ..services.auto_renewal import check_and_renew_if_needed, QobuzCredentialRenewer
 
 api_bp = Blueprint('api', __name__)
 logger = logging.getLogger(__name__)
@@ -199,6 +201,15 @@ def token_info():
     try:
         info = get_token_info()
         return jsonify({'success': True, 'token_info': info})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@api_bp.route('/token-info-display')
+def token_info_display():
+    try:
+        from app_modules.utils.token import format_token_info_display
+        display_info = format_token_info_display()
+        return jsonify({'success': True, 'display_info': display_info})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -448,3 +459,92 @@ def get_preview():
     except Exception as e:
         logger.exception("Error en /preview")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/auto-renewal/check')
+def check_auto_renewal():
+    """Verifica si es necesario renovar las credenciales"""
+    try:
+        result = check_and_renew_if_needed()
+        return jsonify(result)
+    except Exception as e:
+        logger.exception("Error en auto-renewal check")
+        return jsonify({
+            'success': False,
+            'message': f'Error verificando renovación: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@api_bp.route('/auto-renewal/force', methods=['POST'])
+def force_auto_renewal():
+    """Fuerza la renovación de credenciales"""
+    try:
+        renewer = QobuzCredentialRenewer()
+        result = renewer.perform_renewal()
+        return jsonify(result)
+    except Exception as e:
+        logger.exception("Error en force auto-renewal")
+        return jsonify({
+            'success': False,
+            'message': f'Error forzando renovación: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@api_bp.route('/auto-renewal/status')
+def auto_renewal_status():
+    """Obtiene el estado actual del sistema de renovación automática"""
+    try:
+        from ..utils.token import get_token_info
+        from ..config import load_credentials
+        from ..services.vercel_adapter import check_vercel_environment
+        
+        # Información del token actual
+        token_info = get_token_info()
+        suscripcion = token_info.get('suscripcion', {})
+        
+        # Verificar entorno
+        vercel_info = check_vercel_environment()
+        
+        status = {
+            'token_valid': token_info.get('token_valido', False),
+            'days_remaining': suscripcion.get('dias_restantes', 0),
+            'needs_renewal': suscripcion.get('dias_restantes', 0) <= 7,
+            'subscription_end': suscripcion.get('fecha_fin_legible'),
+            'auto_renewal_enabled': True,
+            'is_vercel': vercel_info['is_vercel'],
+            'vercel_env': vercel_info['vercel_env'],
+            'has_env_vars': vercel_info['has_qobuz_token'],
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        # En desarrollo local, agregar información de credenciales guardadas
+        if not vercel_info['is_vercel']:
+            saved_credentials = load_credentials()
+            qobuz_creds = saved_credentials.get('qobuz', {})
+            status['last_update'] = qobuz_creds.get('updated_at', 'Nunca')
+            status['has_saved_credentials'] = bool(qobuz_creds)
+        
+        return jsonify(status)
+    except Exception as e:
+        logger.exception("Error en auto-renewal status")
+        return jsonify({
+            'success': False,
+            'message': f'Error obteniendo estado: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@api_bp.route('/vercel/environment')
+def vercel_environment():
+    """Información del entorno de Vercel"""
+    try:
+        from ..services.vercel_adapter import check_vercel_environment
+        return jsonify(check_vercel_environment())
+    except Exception as e:
+        logger.exception("Error checking Vercel environment")
+        return jsonify({
+            'error': str(e),
+            'is_vercel': bool(os.environ.get('VERCEL'))
+        }), 500
