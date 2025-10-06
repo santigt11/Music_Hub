@@ -237,11 +237,23 @@ def search():
                 
                 for i, t in enumerate(lyrics_results):
                     print(f"[API DEBUG] Procesando resultado {i+1}: {t.get('title')} - {t.get('performer', {}).get('name', 'Unknown')}")
+                    
+                    # Construir información del álbum con artista
+                    album_info = t.get('album', {})
+                    album_title = album_info.get('title', 'Unknown')
+                    album_artist = album_info.get('artist', {}).get('name', '') if album_info.get('artist') else ''
+                    
+                    # Formatear álbum con artista si está disponible
+                    if album_artist and album_artist != t.get('performer', {}).get('name', ''):
+                        album_display = f"{album_title} - {album_artist}"
+                    else:
+                        album_display = album_title
+                    
                     item = {
                         'id': t.get('id'),
                         'title': t.get('title'),
                         'artist': t.get('performer', {}).get('name', 'Unknown'),
-                        'album': t.get('album', {}).get('title', 'Unknown'),
+                        'album': album_display,
                         'duration': t.get('duration', 0),
                         'cover': t.get('album', {}).get('image', {}).get('small', ''),
                         'source': t.get('source') or 'qobuz'
@@ -263,11 +275,23 @@ def search():
                 # Evitar duplicados con resultados por letra
                 if any((existing.get('id') and existing.get('id') == t.get('id')) or (existing.get('title') == t.get('title') and existing.get('artist') == (t.get('performer', {}) or {}).get('name', 'Unknown')) for existing in results):
                     continue
+                
+                # Construir información del álbum con artista
+                album_info = t.get('album', {})
+                album_title = album_info.get('title', 'Unknown')
+                album_artist = album_info.get('artist', {}).get('name', '') if album_info.get('artist') else ''
+                
+                # Formatear álbum con artista si está disponible
+                if album_artist and album_artist != t.get('performer', {}).get('name', ''):
+                    album_display = f"{album_title} - {album_artist}"
+                else:
+                    album_display = album_title
+                
                 item = {
                     'id': t.get('id'),
                     'title': t.get('title'),
                     'artist': t.get('performer', {}).get('name', 'Unknown'),
-                    'album': t.get('album', {}).get('title', 'Unknown'),
+                    'album': album_display,
                     'duration': t.get('duration', 0),
                     'cover': t.get('album', {}).get('image', {}).get('small', ''),
                     'source': 'qobuz'
@@ -282,11 +306,22 @@ def search():
                     if sp_info:
                         mapped = downloader.search_track_from_spotify_info(sp_info)
                         if mapped:
+                            # Construir información del álbum con artista
+                            album_info = mapped.get('album', {})
+                            album_title = album_info.get('title', 'Unknown')
+                            album_artist = album_info.get('artist', {}).get('name', '') if album_info.get('artist') else ''
+                            
+                            # Formatear álbum con artista si está disponible
+                            if album_artist and album_artist != mapped.get('performer', {}).get('name', ''):
+                                album_display = f"{album_title} - {album_artist}"
+                            else:
+                                album_display = album_title
+                            
                             results.append({
                                 'id': mapped.get('id'),
                                 'title': mapped.get('title'),
                                 'artist': mapped.get('performer', {}).get('name','Unknown'),
-                                'album': mapped.get('album', {}).get('title','Unknown'),
+                                'album': album_display,
                                 'duration': mapped.get('duration',0),
                                 'cover': mapped.get('album', {}).get('image', {}).get('small',''),
                                 'source': 'qobuz',
@@ -299,11 +334,22 @@ def search():
                             simple_query = f"{title} {artist}".strip()
                             if simple_query:
                                 for t in downloader.search_tracks_with_locale(simple_query, limit=10, force_latin=True):
+                                    # Construir información del álbum con artista
+                                    album_info = t.get('album', {})
+                                    album_title = album_info.get('title', 'Unknown')
+                                    album_artist = album_info.get('artist', {}).get('name', '') if album_info.get('artist') else ''
+                                    
+                                    # Formatear álbum con artista si está disponible
+                                    if album_artist and album_artist != t.get('performer', {}).get('name', ''):
+                                        album_display = f"{album_title} - {album_artist}"
+                                    else:
+                                        album_display = album_title
+                                    
                                     results.append({
                                         'id': t.get('id'),
                                         'title': t.get('title'),
                                         'artist': t.get('performer', {}).get('name','Unknown'),
-                                        'album': t.get('album', {}).get('title','Unknown'),
+                                        'album': album_display,
                                         'duration': t.get('duration',0),
                                         'cover': t.get('album', {}).get('image', {}).get('small',''),
                                         'source': 'qobuz',
@@ -312,11 +358,22 @@ def search():
             else:
                 tracks = downloader.search_tracks_with_locale(query, limit=15, force_latin=True)
                 for track in tracks:
+                    # Construir información del álbum con artista
+                    album_info = track.get('album', {})
+                    album_title = album_info.get('title', 'Unknown')
+                    album_artist = album_info.get('artist', {}).get('name', '') if album_info.get('artist') else ''
+                    
+                    # Formatear álbum con artista si está disponible
+                    if album_artist and album_artist != track.get('performer', {}).get('name', ''):
+                        album_display = f"{album_title} - {album_artist}"
+                    else:
+                        album_display = album_title
+                    
                     results.append({
                         'id': track.get('id'),
                         'title': track.get('title'),
                         'artist': track.get('performer', {}).get('name', 'Unknown'),
-                        'album': track.get('album', {}).get('title', 'Unknown'),
+                        'album': album_display,
                         'duration': track.get('duration', 0),
                         'cover': track.get('album', {}).get('image', {}).get('small', ''),
                         'source': 'qobuz'
@@ -404,6 +461,16 @@ def proxy_download():
                     cover_url = images.get('large') or images.get('small')
                     performer = t_info.get('performer', {})
                     artist_name = performer.get('name', '') if isinstance(performer, dict) else ''
+                    
+                    # Obtener artista del álbum
+                    album_artist_info = album_info.get('artist', {}) if isinstance(album_info, dict) else {}
+                    album_artist_name = album_artist_info.get('name', '') if isinstance(album_artist_info, dict) else ''
+                    
+                    # Obtener género
+                    genre_info = album_info.get('genre', {}) if isinstance(album_info, dict) else {}
+                    genre_name = genre_info.get('name', '') if isinstance(genre_info, dict) else ''
+                    
+                    # Obtener año
                     released_at = album_info.get('released_at', '') if isinstance(album_info, dict) else ''
                     year = ''
                     if isinstance(released_at, int):
@@ -414,7 +481,18 @@ def proxy_download():
                             pass
                     elif isinstance(released_at, str) and len(released_at) >= 4:
                         year = released_at[:4]
-                    metadata = {'title': t_info.get('title', ''), 'artist': artist_name, 'album': album_info.get('title', '') if isinstance(album_info, dict) else '', 'year': year, 'track_number': str(t_info.get('track_number', '')) if t_info.get('track_number') else ''}
+                    
+                    # Construir metadatos completos
+                    metadata = {
+                        'title': t_info.get('title', ''),
+                        'artist': artist_name,
+                        'album': album_info.get('title', '') if isinstance(album_info, dict) else '',
+                        'album_artist': album_artist_name,
+                        'year': year,
+                        'track_number': str(t_info.get('track_number', '')) if t_info.get('track_number') else '',
+                        'disc_number': str(t_info.get('media_number', '')) if t_info.get('media_number') else '',
+                        'genre': genre_name
+                    }
                     add_metadata_to_file(temp_file.name, metadata, cover_url)
             except Exception:
                 pass
