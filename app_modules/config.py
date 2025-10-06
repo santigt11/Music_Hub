@@ -2,11 +2,32 @@ import os
 import json
 from typing import Dict, Any
 
-# Configuración general y constantes
-QOBUZ_TOKEN = os.environ.get('QOBUZ_TOKEN', "uvYlbmnFsM0l0NBV6WPk7ZWODJyP1-CNCOVxYSycocXurhfHuqrq29GbDkouItq8yaiwNropgKUJN8H0MYbjxg")
+def _get_required_env_var(var_name: str) -> str:
+    """
+    Obtiene una variable de entorno requerida, lanza error si no existe
+    """
+    value = os.environ.get(var_name)
+    if not value:
+        raise ValueError(f"Variable de entorno requerida no encontrada: {var_name}. "
+                        f"Configúrala en Vercel para que la aplicación funcione correctamente.")
+    return value
 
-# Token de Genius API - usar variable de entorno o fallback
-GENIUS_TOKEN = os.environ.get('GENIUS_TOKEN', "bOb0AM7TteQJ9J2t1JjQtHfSw2qlhp_U5oyFRenLmshiQw0jgrowXLyurdbda6Rt")
+# Variables de entorno requeridas en Vercel
+try:
+    QOBUZ_TOKEN = _get_required_env_var('QOBUZ_TOKEN')
+    QOBUZ_USER_ID = _get_required_env_var('QOBUZ_USER_ID')
+    QOBUZ_APP_ID = _get_required_env_var('QOBUZ_APP_ID')
+    QOBUZ_APP_SECRET = _get_required_env_var('QOBUZ_APP_SECRET')
+    GENIUS_TOKEN = _get_required_env_var('GENIUS_TOKEN')
+except ValueError as e:
+    print(f"ERROR DE CONFIGURACIÓN: {e}")
+    print("Por favor, configura las siguientes variables de entorno en Vercel:")
+    print("- QOBUZ_TOKEN")
+    print("- QOBUZ_USER_ID")
+    print("- QOBUZ_APP_ID")
+    print("- QOBUZ_APP_SECRET")
+    print("- GENIUS_TOKEN")
+    raise
 
 # Flask settings
 FLASK_DEBUG = os.environ.get('FLASK_ENV') == 'development'
@@ -76,28 +97,41 @@ def update_qobuz_credentials(new_credentials: Dict[str, str]) -> bool:
 
 def get_current_token() -> str:
     """
-    Obtiene el token actual, priorizando variables de entorno de Vercel
+    Obtiene el token actual desde variables de entorno
     """
-    # Detectar si estamos en Vercel
-    is_vercel = bool(os.environ.get('VERCEL'))
-    
-    if is_vercel:
-        from .services.vercel_adapter import get_current_token_vercel
-        return get_current_token_vercel()
-    else:
-        # En desarrollo local, usar archivo de credenciales
-        credentials = load_credentials()
-        qobuz_creds = credentials.get('qobuz', {})
-        
-        # Priorizar token del archivo de credenciales
-        if 'token' in qobuz_creds:
-            return qobuz_creds['token']
-        
-        # Fallback al token por defecto
-        return QOBUZ_TOKEN
+    return QOBUZ_TOKEN
 
-# Actualizar el token global
-CURRENT_QOBUZ_TOKEN = get_current_token()
+def get_current_user_id() -> str:
+    """
+    Obtiene el User ID actual desde variables de entorno
+    """
+    return QOBUZ_USER_ID
 
-__all__ = ["QOBUZ_TOKEN", "CURRENT_QOBUZ_TOKEN", "GENIUS_TOKEN", "FLASK_DEBUG", "PORT", 
-          "update_qobuz_credentials", "get_current_token", "load_credentials"]
+def get_current_app_id() -> str:
+    """
+    Obtiene el App ID actual desde variables de entorno
+    """
+    return QOBUZ_APP_ID
+
+def get_current_app_secret() -> str:
+    """
+    Obtiene el App Secret actual desde variables de entorno
+    """
+    return QOBUZ_APP_SECRET
+
+def get_genius_token() -> str:
+    """
+    Obtiene el token de Genius desde variables de entorno
+    """
+    return GENIUS_TOKEN
+
+# Variables globales para compatibilidad
+CURRENT_QOBUZ_TOKEN = QOBUZ_TOKEN
+
+__all__ = [
+    "QOBUZ_TOKEN", "QOBUZ_USER_ID", "QOBUZ_APP_ID", "QOBUZ_APP_SECRET", 
+    "CURRENT_QOBUZ_TOKEN", "GENIUS_TOKEN", "FLASK_DEBUG", "PORT", 
+    "update_qobuz_credentials", "get_current_token", "get_current_user_id",
+    "get_current_app_id", "get_current_app_secret", "get_genius_token",
+    "load_credentials"
+]
